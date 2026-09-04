@@ -1,4 +1,4 @@
-"""調査定義の検証（`SPEC_PHASE1.md` §10.1, §11）。
+"""調査定義の検証（`SPEC.md` §10.1, §11）。
 
 2段構えになっている。
 
@@ -216,7 +216,7 @@ def _check_reasoning(survey: SurveyDefinition, report: ValidationReport) -> None
         "W_REASONING",
         f"reasoning: true の設問が {len(reasoning_questions)} 問ある。"
         "理由を書かせると回答が収束してペルソナ間のばらつきが縮みうる"
-        "（SPEC_PHASE1.md §13）。水準だけでなく、選択肢の分布・セグメント間の差が"
+        "（SPEC.md §13）。水準だけでなく、選択肢の分布・セグメント間の差が"
         "残っているかを確かめること。出力トークンと所要時間も増える",
     )
 
@@ -387,7 +387,7 @@ def _check_system_prompts(survey: SurveyDefinition, report: ValidationReport) ->
 def _check_measures(survey: SurveyDefinition, report: ValidationReport) -> None:
     """同じ `measure` の設問が、同じ表として集計できる形か（E6, §8）。
 
-    コンセプト比較表は measure ごとに1表で、**表頭も指標も代表1つの設問から作る**。
+    集計表は measure ごとに1表で、**表頭も指標も代表1つの設問から作る**。
     食い違ったまま束ねると、別の問いの数字が同じ列に並ぶ。
 
     `top_box` を見るのは、T2B が代表の定義で全コンセプトぶん計算されるため。

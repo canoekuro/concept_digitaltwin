@@ -1,4 +1,4 @@
-"""集計結果の表への整形（`SPEC_PHASE1.md` §7.1・§7.2）。
+"""集計結果の表への整形（`SPEC.md` §7.1）。
 
 `Table` は CSV・xlsx のどちらにも同じ形で流せる中間表現。**表示用の整形はここに集約する**。
 仕様の表記（`12.3%` / `3.21`）にそろえて人が読む用に振る。機械可読な生の値が要るなら
@@ -215,7 +215,7 @@ def _empty_row(stimulus_name: str, width: int, *, with_segment: bool) -> list[ob
     `group_by_segments` は回答からセグメント値を作るので、回答が無いコンセプトは
     行そのものが立たない。**黙って消すとコンセプトが表から消える**。実査に出したのに
     出てこないのか、そもそも出していないのかが読み分けられなくなるので、
-    n=0 の行として残す（`SPEC_PHASE1.md` §11 と同じ扱い）。
+    n=0 の行として残す（`SPEC.md` §11 と同じ扱い）。
     """
     values: list[object] = [stimulus_name]
     if with_segment:

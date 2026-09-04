@@ -10,7 +10,7 @@
 `UIConfig` 自身も**最上位で2群に分かれる**。`survey_defaults` はそのまま調査定義に
 なるもの、`ui` は画面を描くためだけのもの（`UIConfig` の説明を参照）。
 
-2つを `persona_sim.uiconfig.build.build_survey()` が合成して調査定義（`SPEC_PHASE1.md` §3）を作る。
+2つを `persona_sim.uiconfig.build.build_survey()` が合成して調査定義（`SPEC.md` §3）を作る。
 分けているのは、画面に出す入力欄と、運用で固定しておきたい値の寿命が違うため。
 毎回入力させると事故るし、設定ファイルに埋めると調査ごとに変えられない。
 
@@ -73,7 +73,7 @@ class Pricing:
 
     単価はモデル改定で、為替は日々で動く。別々に直せるよう分けて持つ。
     ここで出すのは**画面に出す概算**であって実請求ではない。実行メタデータの
-    `estimated_cost` は `SPEC_PHASE1.md` §9 のとおり `null` のままにする。
+    `estimated_cost` は `SPEC.md` §9 のとおり `null` のままにする。
     """
 
     input_usd_per_million: float
@@ -169,7 +169,7 @@ class UIConfig:
     benchmarks: Benchmarks
     #: 割り付けパターンとは独立に必ず入れる集計軸（`survey_defaults.output.base_segments`）。
     base_segments: tuple[str, ...] = ("total", "sex")
-    #: この画面が作る調査の種類（`SPEC_PHASE1.md` §3.0）。設定に置いてあるのは、
+    #: この画面が作る調査の種類（`SPEC.md` §3.0）。設定に置いてあるのは、
     #: 将来ほかの種別の画面を作るときにコードではなく設定で切り替えられるようにするため。
     survey_type: str = "concept"
 

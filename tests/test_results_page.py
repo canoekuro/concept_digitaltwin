@@ -117,7 +117,7 @@ def test_the_page_shows_one_concept_table_per_tabulated_question(survey, result)
 
 
 def test_the_attribute_table_picker_offers_only_concept_by_question(result):
-    """コンセプト比較表とパネル構成表は選ばせない。"""
+    """積んだ表とパネル構成表は選ばせない。"""
     offered = [table.key for table in result.tables if table.key.startswith(CROSSTAB_PREFIX)]
 
     assert offered

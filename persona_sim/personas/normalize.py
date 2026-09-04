@@ -1,4 +1,4 @@
-"""`personas_base` の派生列を作るための純 Python 実装（`SPEC_PHASE1.md` §2.1）。
+"""`personas_base` の派生列を作るための純 Python 実装（`SPEC.md` §2.1）。
 
 **このモジュールは pyspark に依存しない。** 分解規則そのものを Spark 抜きで
 単体テストできるようにするため。Spark 実行時は `persona_sim.personas.build` が

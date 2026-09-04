@@ -25,14 +25,14 @@
 | 3 | 自然言語の対象者条件を `ScreenerQuestion` に落とす経路が無い（選択肢と `pass_if` が必須） |
 | 4 | `runs` に `status` 列が無く、`responses` も完走後に一度だけ書かれるため走行中の進捗が取れない |
 | 5 | 国勢調査の人口比データがリポジトリに存在しない |
-| 6 | `SPEC_PHASE1.md` §1.2 が Web UI を「やらないこと」に挙げている |
+| 6 | `SPEC.md` §1.2 が Web UI を「やらないこと」に挙げている |
 | 7 | 最大剰余方式は `panel/quotas.py` に実装済み（新規実装は不要） |
 
 ## 対象ファイル
 
 ### ルール改定
 - `AGENTS.md` … 秘密情報の定義からエンドポイント名を外す。Web UI をスコープに加える
-- `SPEC_PHASE1.md` … §1.2（スコープ）、§10.3（Web UI）を追加・改定
+- `SPEC.md` … §1.2（スコープ）、§10.3（Web UI）を追加・改定
 - `persona_sim/config.py` … docstring をカタログ名・資格情報のみに限定
 - `examples/survey_sample.yaml` / `notebooks/quickstart.ipynb` … プレースホルダを実名に置換
 
@@ -42,7 +42,7 @@
 - `persona_sim/panel/validate.py` … `_check_screener_questions` / `_check_screener_conditions`
 - `persona_sim/panel/screening.py` … 前提ブロック、`expected_question_ids()`、`INFER_QUESTION_ID`
 - `persona_sim/panel/infer.py` … `condition_lines()` の委譲、判定1件＝1レコード
-- `SPEC_PHASE1.md` §2.6 / §4.2、`README.md`
+- `SPEC.md` §2.6 / §4.2、`README.md`
 - テスト: `test_survey_loader.py` / `test_validate.py` / `test_screening.py` /
   `test_screening_spark.py` / `test_infer.py`
 

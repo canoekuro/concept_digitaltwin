@@ -2,7 +2,7 @@
 
 重点は M5 の完了条件そのもの。
 
-- `SPEC_PHASE1.md` §7.4 の出力一式が出ること
+- `SPEC.md` §7.3 の出力一式が出ること
 - `aggregates`（§2.5）の値が生データと合うこと
 - `export` が `aggregates` だけから同じ表を作り直せること
 """
@@ -38,7 +38,7 @@ PERSONA_SCHEMA = (
     "culinary_persona string, source_version string"
 )
 
-#: §7.4 のファイル一式（crosstab_* は設問構成で本数が変わるので別に見る）。
+#: §7.3 のファイル一式（crosstab_* は設問構成で本数が変わるので別に見る）。
 EXPECTED_FILES = (
     "crosstab_all.csv",
     "open_ends.csv",
@@ -114,7 +114,7 @@ def aggregated(spark, request, tmp_path_factory):
 
 
 # --------------------------------------------------------------------------- #
-# 完了条件: §7.4 の一式が出る
+# 完了条件: §7.3 の一式が出る
 # --------------------------------------------------------------------------- #
 
 

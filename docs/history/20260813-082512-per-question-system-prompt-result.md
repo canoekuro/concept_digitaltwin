@@ -16,7 +16,7 @@
 | `persona_sim/panel/validate.py` | `_check_system_prompts()`。どの設問からも指されていない `systems` を `W_UNUSED_SYSTEM_PROMPT` で警告 |
 | `app/config/ui_config.yaml` | `main_survey.prompt.systems` に `purchase_intent` / `novelty`。既定2問に `system:` を紐づけ |
 | `examples/survey_sample.yaml` | 同内容を書き写し、`q_intent_*` / `q_novelty_*` に `system:`（`q_reason_*` は既定のまま） |
-| `SPEC_PHASE1.md` | §3 スキーマ例・設問フィールド表、§6.1「設問ごとに `[system]` を使い分ける」、§6.2 prefix cache の注記 |
+| `SPEC.md` | §3 スキーマ例・設問フィールド表、§6.1「設問ごとに `[system]` を使い分ける」、§6.2 prefix cache の注記 |
 | `docs/GUIDE_SURVEY_DEFINITION.md` | §2 に書き方の節（実例は自動検証の対象になる完全な定義で記述） |
 | `docs/SPEC_UI.md` | §2 に、既定設問が `system` を持つことと画面に出さない理由 |
 

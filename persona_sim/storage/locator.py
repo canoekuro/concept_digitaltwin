@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 from persona_sim.config import StorageConfig
 
-#: 論理テーブル名（`SPEC_PHASE1.md` §2）。
+#: 論理テーブル名（`SPEC.md` §2）。
 PERSONAS_BASE = "personas_base"
 PANELS = "panels"
 RESPONSES = "responses"

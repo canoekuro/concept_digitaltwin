@@ -125,7 +125,7 @@ def test_build_result_segments_always_include_total(survey):
     data["output"]["segments"] = ["sex"]
     without_total = survey_from_dict(data)
     result = build_result(without_total, answers_from_rows([_row()], without_total), [])
-    axes = {row.segment for row in result.by_segment}
+    axes = {row.segment for table in result.crosstabs for row in table.rows}
     assert "total" in axes
 
 

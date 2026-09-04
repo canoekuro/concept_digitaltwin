@@ -1,7 +1,7 @@
-"""Persona Lab フェーズ1のパイプライン（`SPEC_PHASE1.md`）。
+"""Persona Lab フェーズ1のパイプライン（`SPEC.md`）。
 
 調査定義 YAML を入力に、パネル構築 → 回答生成 → 集計表出力までを担う。
-`SPEC_PHASE1.md` §12 の M1〜M7 を実装済みで、その上に
+`SPEC.md` §12 の M1〜M7 を実装済みで、その上に
 コンセプト調査 Web UI（`app/`、`docs/SPEC_UI.md`）が載る。
 """
 
@@ -11,7 +11,7 @@
 #: 二重に持つと食い違う（実際に 0.1.0 と 0.3.0 でずれていた）。
 #: `run_metadata.json` の `persona_sim_version` は
 #: この値を書くので、ずれると「どの版のコードで走ったのか」が後から判別できない
-#: （`SPEC_PHASE1.md` §9.1 の「各バージョンが揃えば入力が再現できる」の根拠が崩れる）。
+#: （`SPEC.md` §9.1 の「各バージョンが揃えば入力が再現できる」の根拠が崩れる）。
 #:
 #: **`importlib.metadata` から引かないこと。** リポジトリを未インストールのまま使う経路
 #: （CI の `pythonpath = ["."]`、ノートブックの sys.path 追加）で `PackageNotFoundError`

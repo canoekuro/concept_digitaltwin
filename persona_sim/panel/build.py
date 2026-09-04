@@ -1,4 +1,4 @@
-"""パネル構築（`SPEC_PHASE1.md` §2.2, §4, §5）。
+"""パネル構築（`SPEC.md` §2.2, §4, §5）。
 
 `select_members`（誰を選ぶか）と `_assigned_stimuli`（何を見せるか）を束ね、
 `panels` テーブルに書き出す。

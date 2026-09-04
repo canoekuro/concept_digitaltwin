@@ -1,4 +1,4 @@
-"""`screener.mode: infer` の判定（`SPEC_PHASE1.md` §4.2）。
+"""`screener.mode: infer` の判定（`SPEC.md` §4.2）。
 
 候補ペルソナを一定数ずつまとめて別セッションの LLM に渡し、対象者条件に合致する
 蓋然性が高い者を選ばせる。`ask` の費用と `assume` の矛盾の中間を取る方式。

@@ -1,4 +1,4 @@
-"""実行前の見積もり（`docs/SPEC_UI.md` §4、`SPEC_PHASE1.md` §10.1）。
+"""実行前の見積もり（`docs/SPEC_UI.md` §4、`SPEC.md` §10.1）。
 
 **セッション数も回答件数もここで数えない。** `validate_static()` が返す `Estimate` を
 そのまま使う。数え方を2箇所に持つと、画面の見積もりと CLI の見積もりが食い違いうる。
@@ -12,7 +12,7 @@
 
 金額は**画面に出す概算**として出す。単価・為替は `ui.estimation_benchmarks.pricing` の
 設定値で、ワークスペースの実請求ではない。実行メタデータの `estimated_cost` は
-`SPEC_PHASE1.md` §9 のとおり `null` のままにする。
+`SPEC.md` §9 のとおり `null` のままにする。
 """
 
 from __future__ import annotations

@@ -23,14 +23,14 @@
 # それぞれ model → prompt → persona_card → その他の順で書く。
 # ==============================================================================
 survey_defaults:
-  # この画面が作る調査の種類（SPEC_PHASE1.md §3.0）。runs にも列として残る
+  # この画面が作る調査の種類（SPEC.md §3.0）。runs にも列として残る
   survey_type: "concept"
 
   # ----------------------------------------------------------------------------
   # A-1. スクリーニング（対象者の絞り込み）
   #
   # 画面で入力するのは自然言語の対象者条件1つだけ。それが調査定義の
-  # screening.conditions に入る（SPEC_PHASE1.md §4.2）。空欄ならスクリーニングを行わない。
+  # screening.conditions に入る（SPEC.md §4.2）。空欄ならスクリーニングを行わない。
   # ----------------------------------------------------------------------------
   screening:
     # 判定に使うモデル。省略したキーは main_survey.model をそのまま引き継ぐ
@@ -88,7 +88,7 @@ survey_defaults:
       # 変わるため。噛み合っていない組み合わせは validate が W_OUTPUT_BUDGET で警告する。
       max_tokens: 100          # 選択肢番号だけ返させる
       max_tokens_open: 512     # 自由回答を足す場合に使う（字数は設問の max_length）
-      # 設問に reasoning: true を書いた場合に使う（SPEC_PHASE1.md §6.3）。
+      # 設問に reasoning: true を書いた場合に使う（SPEC.md §6.3）。
       # 理由の散文を返させるので、番号ぶんの max_tokens では必ず足りない。
       # 字数は設問の reasoning_max_length（既定80文字）。
       max_tokens_reasoning: 512
@@ -103,7 +103,7 @@ survey_defaults:
         - 与えられたコンセプトをよく読み込み、提示する人物がどのようにとらえるかを深く考えてから回答してください。
         - 指定された形式のみで回答し、説明や前置きは書かないでください
 
-      # 設問ごとに使い分ける [system]（SPEC_PHASE1.md §6.1）。
+      # 設問ごとに使い分ける [system]（SPEC.md §6.1）。
       # 下の questions: の system: に**名前**を書いて紐づける（文面は書かない）。
       # 購入意向と新規性は聞いていることの性質が違い、1本のプロンプトで兼ねるより
       # 書き分けたほうが精度が高いという実測に基づく（docs/issues/202608131659.md）。
@@ -166,7 +166,7 @@ survey_defaults:
 
       # 本調査でペルソナカードに含める定性フィールド（下記4つを既定選択中）。
       #
-      # personas_base（SPEC_PHASE1.md §2.1）にあるナラティブ列のうち、persona_fields に
+      # personas_base（SPEC.md §2.1）にあるナラティブ列のうち、persona_fields に
       # 指定できるのは以下。カテゴリに応じて必要な列だけ選び直す（例: スポーツ用品なら
       # sports_persona、旅行なら travel_persona を足す）。field には personas_base の
       # 列名をそのまま書くこと（無い列を書くと validate が停止する）。
@@ -243,7 +243,7 @@ ui:
   # 割り付けパターン（画面のラジオボタン）
   #
   # 3つとも quotas.mode: proportion で比率を渡す。整数への配分は
-  # persona_sim.panel.quotas.allocate_cell_sizes() の最大剰余法が行う（SPEC_PHASE1.md §4.1）。
+  # persona_sim.panel.quotas.allocate_cell_sizes() の最大剰余法が行う（SPEC.md §4.1）。
   allocation_patterns:
     - { id: "sex_x_age10", label: "性別×10歳刻み均等", band: 10 }
     - { id: "sex_x_age5", label: "性別×5歳刻み均等", band: 5 }
@@ -269,7 +269,7 @@ ui:
       output_tokens_per_session: 60    # 通過者の番号列
       sessions_per_min: 640            # 旧 avg_latency_sec 3.0 秒 × 並列度 32 相当
     # 画面に出す概算のための前提。ワークスペースの実請求ではない
-    # （実行メタデータの estimated_cost は SPEC_PHASE1.md §9 のとおり null のまま）。
+    # （実行メタデータの estimated_cost は SPEC.md §9 のとおり null のまま）。
     # 単価はモデル改定で、為替は日々で動くので別々に持つ。
     pricing:
       input_usd_per_million: 1.0

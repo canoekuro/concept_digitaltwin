@@ -43,7 +43,7 @@
 | `persona_sim/panel/loader.py` | `survey_from_record()` / `_record_screening()` / `RECORD_MODEL` を追加。`_reject_unusable_questions()` の docstring を更新（記録の読み直しはここを通らない） |
 | `persona_sim/panel/schema.py` | `SurveyDefinition.from_record` を追加 |
 | `persona_sim/storage/warehouse.py` | `fetch_survey()` を `survey_from_record()` 経由に |
-| `SPEC_PHASE1.md` §9 | 記録から読み直すときの範囲と、実行に使えないことを明記 |
+| `SPEC.md` §9 | 記録から読み直すときの範囲と、実行に使えないことを明記 |
 | `docs/SPEC_UI.md` §4.3 | 同上（`survey_from_dict()` と書いていた箇所） |
 | `tests/test_survey_loader.py` | 復元経路のテスト15件 |
 | `tests/test_warehouse.py` | ダミー接続で `fetch_survey()` の経路を確認する2件 |

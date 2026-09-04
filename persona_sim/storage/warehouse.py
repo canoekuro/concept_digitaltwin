@@ -317,7 +317,7 @@ RAW_RESPONSE_COLUMNS = (
 
 
 def responses_query(storage: StorageConfig) -> tuple[str, dict[str, Any]]:
-    """ローデータのダウンロード用。属性を付けた全件（§7.4 `responses_raw.csv` 相当）。
+    """ローデータのダウンロード用。属性を付けた全件（§7.3 `responses_raw.csv` 相当）。
 
     列を明示するのは、配列カラムを `to_json` で文字列にして受け取るため（モジュール冒頭の
     決めごと）。`r.*` だとコネクタが `ARRAY<...>` を何で返すかに挙動を預けることになり、

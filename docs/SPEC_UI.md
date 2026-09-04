@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 位置づけ | `SPEC_PHASE1.md` §10.3 を展開したもの。矛盾したら `SPEC_PHASE1.md` が優先 |
+| 位置づけ | `SPEC.md` §10.3 を展開したもの。矛盾したら `SPEC.md` が優先 |
 | 対象 | `persona_sim` の上に載せる Streamlit マルチページアプリ（Databricks Apps） |
-| 責務境界 | 調査定義（`SPEC_PHASE1.md` §3）を組み立てて既存の実行経路に渡すまで |
+| 責務境界 | 調査定義（`SPEC.md` §3）を組み立てて既存の実行経路に渡すまで |
 | バージョン | 1.0 |
 
 ---
@@ -16,7 +16,7 @@
 
 **UI はロジックを持たない。** パネル構築・回答生成・集計は `persona_sim` の既存経路がすべて行う。
 UI がやるのは「画面入力 → 調査定義」の変換と、ジョブ投入、進捗と結果の表示だけ。
-UI から入力できる範囲を超える調査は、従来どおり調査定義ファイル＋CLI で行う。
+UI から入力できる範囲を超える調査は、調査定義ファイルを書いてノートブックから実行する。
 
 ### 決定事項
 
@@ -25,12 +25,12 @@ UI から入力できる範囲を超える調査は、従来どおり調査定�
 | デプロイ環境 | Databricks Apps | Streamlit マルチページアプリ |
 | 画面構成 | 2ページ | ① 調査設計 ② 結果閲覧 |
 | 実行制御 | 非同期（Databricks Jobs API） | UI はジョブを投入して `survey_id` を返す。§6 |
-| データ永続化 | Delta Table | `panels` / `responses` / `runs` / `aggregates`（`SPEC_PHASE1.md` §2） |
+| データ永続化 | Delta Table | `panels` / `responses` / `screener_responses` / `runs`（`SPEC.md` §2） |
 | 提示設計 | 反実仮想モナディック | `same` × `sequential` × `none`。UI からは変えられない |
 | スクリーニング | `infer`（既定） | 自然言語の条件文1つ。空欄ならスクリーニングなし |
 | サンプル割付 | 3パターン | 性別×10歳刻み均等 / 性別×5歳刻み均等 / 国勢調査人口構成比 |
 | 設問 | 定量2問（既定） | 購入意向・新規性。文言と選択肢は画面で編集可 |
-| 設定管理 | `config/ui_config.yaml` | 調査をまたいで変わらないものだけ。§2 |
+| 設定管理 | `app/config/ui_config.yaml` | 調査をまたいで変わらないものだけ。§2 |
 
 ---
 
@@ -38,11 +38,11 @@ UI から入力できる範囲を超える調査は、従来どおり調査定�
 
 | 層 | 何が入るか | どこから来るか |
 |---|---|---|
-| `config/ui_config.yaml` | 本調査とスクリーニングのモデル・プロンプト・ペルソナカード、既定設問、割り付けパターン、見積もり用の実績値 | 運用で固定。リポジトリにコミットする |
+| `app/config/ui_config.yaml` | 本調査とスクリーニングのモデル・プロンプト・ペルソナカード、既定設問、割り付けパターン、見積もり用の実績値 | 運用で固定。リポジトリにコミットする |
 | 画面入力（`SurveyForm`） | 調査名、N数、対象性別と性別ごとの対象年齢、対象者条件、割り付けパターンの選択、コンセプト、設問文 | 調査ごとに入力 |
 
 ```
-config/ui_config.yaml ─┐
+app/config/ui_config.yaml ─┐
                        ├→ build_survey() → 調査定義（§3）→ panel → screen → run → aggregate
 画面入力（SurveyForm）─┘
 ```
@@ -50,7 +50,7 @@ config/ui_config.yaml ─┐
 分けているのは、両者の寿命が違うから。毎回入力させると事故るし、設定ファイルに埋めると
 調査ごとに変えられない。合成は `persona_sim.uiconfig.build.build_survey()` が行う。
 
-**組み立てた dict は `survey_from_dict()` に通す。** 検証を自前で書かず、CLI・ノートブックと
+**組み立てた dict は `survey_from_dict()` に通す。** 検証を自前で書かず、ノートブックと
 同じ経路に乗せるため。UI 経由と調査定義ファイル経由で通る検証が違ってはいけない。
 同じ理由で、`ui_config.yaml` の `model:` / `prompt:` / `persona_card:` は UI 側で解釈せず、
 そのまま調査定義へ渡す（スキーマの二重管理を避ける）。
@@ -74,11 +74,11 @@ persona_card → その他。
 （あわせて結果画面の実行一覧の絞り込みにも使う）。
 
 既定の設問は `system`（`main_survey.prompt.systems` の名前）を持つことがある
-（`SPEC_PHASE1.md` §6.1）。購入意向と新規性は聞いていることの性質が違うので、
+（`SPEC.md` §6.1）。購入意向と新規性は聞いていることの性質が違うので、
 既定の2問には別々の `[system]` を紐づけてある。**画面には出さない。** 文面は調査ごとに
 変えるものではなく、運用側が `ui_config.yaml` で書き分けて固定する値だから。
 
-**そのままは渡らない。** 調査定義の設問は提示スロットに紐づくので（`SPEC_PHASE1.md` §3.1）、
+**そのままは渡らない。** 調査定義の設問は提示スロットに紐づくので（`SPEC.md` §3.1）、
 `build_survey()` がコンセプトの数だけ `slot` 展開する。`id` は `{元のid}_s{slot}` にして
 一意にし、元の `id` を `measure`（コンセプト横断で同じ問いとして束ねる集計キー）に残す。
 **画面と入力は変えない。** コンセプトごとに設問を作らせるのは、UI の役割（コンセプト調査を
@@ -91,8 +91,8 @@ persona_card → その他。
 押されたその場で生成する（§5）。ジョブがファイルを書き出しても誰も読まないため、
 UI 経由の調査は調査定義側の既定（`delta` のみ）で走る。
 
-調査定義のスキーマとしては `output.formats` は残っている。CLI やノートブックから
-ファイル一式を書き出したい場合はそちらで指定する（`SPEC_PHASE1.md` §7.4）。
+調査定義のスキーマとしては `output.formats` は残っている。ノートブックから
+ファイル一式を書き出したい場合はそちらで指定する（`SPEC.md` §7.3）。
 
 ### 書かないもの
 
@@ -102,7 +102,7 @@ UI 経由の調査は調査定義側の既定（`delta` のみ）で走る。
 - **APIキー・トークン。** `databricks-sdk` の既定の認証チェーンに任せる
 
 サービングエンドポイント名は書いてよい。秘密ではないうえ、何で回したかが読み取れないと
-再現できない（`SPEC_PHASE1.md` §9.1）。
+再現できない（`SPEC.md` §9.1）。
 
 ### `survey_defaults.questions` には `top_box` を必ず入れる
 
@@ -161,14 +161,14 @@ ID が作り直される。画面に出す ID・Volumes に置く YAML のファ
 
 ### 3.2 対象者条件 → スクリーナー
 
-条件文は**自然言語のまま** `screening.conditions` に入る（`SPEC_PHASE1.md` §4.2）。
+条件文は**自然言語のまま** `screening.conditions` に入る（`SPEC.md` §4.2）。
 
 ```yaml
 screening:
   model: { deployment: "...", max_tokens: 256 }   # ui_config の survey_defaults.screening から
   prompt: { system: "...", rule: "..." }
   persona_card: { attributes: [...], include_summary: true, persona_fields: [...] }
-  mode: "infer"
+  # 方式は1つだけなので mode は書かない（`SPEC.md` §4.2）
   conditions:
     - "週1回以上ビールまたは発泡酒を飲む人"
   logic: "all"
@@ -176,7 +176,7 @@ screening:
   batch_size: 20
 ```
 
-`mode` が `infer` 以外のときは `model` / `prompt` / `persona_card` を書かない。
+判定用の `model` / `prompt` / `persona_card` はそのまま調査定義へ渡す。
 判定の LLM を呼ばないので使い道が無く、残すと「設定したつもり」の記録になる。
 
 **選択肢や `pass_if` を UI 側で捏造しない。** `infer` は候補をまとめて判定用 LLM に見せる方式で、
@@ -201,7 +201,7 @@ screening:
 割り付けセル条件（`panel.quotas.cells`）が担うため、これでも対象外のペルソナは混じらない。
 
 整数人数への配分は `persona_sim.panel.quotas.allocate_cell_sizes()` の最大剰余法が行う
-（`SPEC_PHASE1.md` §4.1）。**UI 側で丸め処理を書かない。** 書くと CLI 経由と UI 経由で
+（`SPEC.md` §4.1）。**UI 側で丸め処理を書かない。** 書くとノートブック経由と UI 経由で
 人数が食い違いうる。
 
 対象年齢の範囲が刻み幅で割り切れない場合（例: 25〜60歳を10歳刻み）はエラーにする。
@@ -230,11 +230,11 @@ screening:
 `panel.quotas.cells` から作る。複数性別のときの `filters` は年齢の envelope だけで
 性別条件を持たないため（§3.3）、`filters` を見ると「性別の指定なし」に見えてしまう。
 
-**セッション数も回答件数も UI で数え直さない。** 数え方を2箇所に持つと、画面と CLI の
+**セッション数も回答件数も UI で数え直さない。** 数え方を2箇所に持つと、画面とバッチの
 見積もりが食い違う。反実仮想モナディックなので本調査は `N × コンセプト数 × 設問数`
 （設問数は画面で入力した問いの数。展開後の設問はその `コンセプト数` 倍で、どの設問も
 記憶を持たないため1設問＝1セッションになる）、`infer` の判定は `候補数 ÷ batch_size` 回になる
-（`SPEC_PHASE1.md` §5.3 / §4.2）。
+（`SPEC.md` §5.3 / §4.2）。
 
 **換算の単位を取り違えない。** 本調査の実績値は**1回答あたり**（`survey_answer`）で取っており、
 `Estimate.answers` に掛ける。判定の実績値は1回で `batch_size` 人分を捌く**1セッションあたり**
@@ -248,7 +248,7 @@ screening:
 
 **金額は画面の概算としてのみ出す。** 単価・為替・安全側の係数は `ui.estimation_benchmarks.pricing`
 の設定値で、ワークスペースの実請求ではない。**実行メタデータの `estimated_cost` は
-`null` のまま**（`SPEC_PHASE1.md` §9）。事前の目安と実際の請求を同じ数字として扱わせない。
+`null` のまま**（`SPEC.md` §9）。事前の目安と実際の請求を同じ数字として扱わせない。
 
 入力トークンはコンセプト文の分量で増減するので、予算目安には `budget_margin` を掛けて
 安全側で出し、分量で変動する旨を注記に添える。
@@ -313,7 +313,7 @@ fetch_answers()  →  answers_from_rows()  →  build_result()
                     （Spark 経由と同じ純関数）
 ```
 
-`answers_from_rows()` と `build_result()` は CLI（Spark 経由）が通るのと同じ関数なので、
+`answers_from_rows()` と `build_result()` はバッチ実行（Spark 経由）が通るのと同じ関数なので、
 読み方が違っても数値は一致する。UI 側に集計の算術を書かない。
 
 配列カラム（`answer_codes` / `options_order` / `flags`）は SQL 側で `to_json` して
@@ -326,17 +326,17 @@ fetch_answers()  →  answers_from_rows()  →  build_result()
 
 ### 4.3 結果ダッシュボード（完了時）
 
-§4.2 で取得した結果から描く。`aggregates` テーブルは読まない（生データから作り直すので、
+§4.2 で取得した結果から描く。集計結果はテーブルに保存しない（生データから作り直すので、
 集計軸を画面側で変えられる余地も残る）。
 
 > 集計には `SurveyDefinition` が要る。調査定義が永続化されているのは
 > `runs.metadata_json.survey_definition` だけなので、選んだ1調査についてだけ
-> そこから `survey_from_record()` で復元する（`SPEC_PHASE1.md` §9）。
+> そこから `survey_from_record()` で復元する（`SPEC.md` §9）。
 >
 > **復元するのは集計が読む範囲だけ**（`survey` / `panel` / `stimuli` / `questions` /
 > `output` とスクリーニングの方式）。記録には実行当時の書き方が残るので、その後で
 > 書き方を変えた block まで読むと、過去の調査の結果が**聞き方の文言を理由に**
-> 読めなくなる。`main_survey`（model / prompt / persona_card）と `design` は集計側に
+> 読めなくなる。`main_survey`（model / prompt / persona_card）は集計側に
 > 参照が無いので読まない。数字の意味を決める block はこれまでどおり厳格に読み、
 > 読めなければ止める——黙って既定値で埋めると、誤った表を正しい表として読んでしまう。
 
@@ -356,7 +356,7 @@ fetch_answers()  →  answers_from_rows()  →  build_result()
 `build_result()` が返す `crosstabs`（`compute_metric()` を通った値）で、ここでは
 並べ替えと表示用の整形しかしない。同じ数字が2通りに出る余地を作らないため。
 
-「平均スコア」は `SPEC_PHASE1.md` §7.1 の定義に揃える
+「平均スコア」は `SPEC.md` §7.1 の定義に揃える
 （選択肢番号を逆順スコア化し、5段階なら 1→5点とした平均）。
 
 **統計的推測の語彙を画面に出さない。** p値・有意差・信頼区間は禁止（`AGENTS.md` 禁止事項）。
@@ -369,36 +369,37 @@ fetch_answers()  →  answers_from_rows()  →  build_result()
 **調査定義の割り付けセルに無い属性値が集計対象に入っていたら注記を出す**
 （`build_result()` の `notes`）。パネルと回答の対応が壊れているか、別の調査の結果を
 見ている兆候であり、どちらも数字そのものは出てしまう。品質フラグと同じく止めはせず、
-必ず表面化させる（`SPEC_PHASE1.md` §11）。
+必ず表面化させる（`SPEC.md` §11）。
 
 ### 4.4 ダウンロード
 
-**ボタンは1つだけ**で、集計表とローデータを **xlsx 1ファイル**（シート2枚）で渡す。
+**ボタンは1つだけ**で、集計表とローデータを **xlsx 1ファイル**（シート3枚）で渡す。
 `st.download_button` は1ファイルしか返せないため、2つ渡すには同梱するしかない。
 
 | シート | 内容 |
 |---|---|
+| `概要` | 調査情報・E3/E4 の注記・読み方・帰属表示（`SPEC.md` §15.3）と免責（§15.1） |
 | `集計表` | 全設問を縦に積んだクロス集計表（コンセプト × セグメント、全体を含む）。n・各選択肢・T2B・平均 |
 | `ローデータ` | `responses` 全件に属性・コンセプト名・選択肢ラベルを付けたもの |
 
-書き出すのは `persona_sim/aggregate/export.py` の `write_ui_workbook()`。
+書き出すのは `persona_sim/aggregate/export.py` の `write_workbook()`。
 `Path` への書き出し専用でバイト列を返さないので、一時ディレクトリに書いてから
 読み直し、`st.download_button` に載せる。
 
-**`write_xlsx()`（§7.4 の `report.xlsx`）とは別関数にする。** シート構成が違うので
-共用すると、UI の都合で CLI の出力が変わる。
+**バッチ実行の `report.xlsx`（`SPEC.md` §7.3）と同じ writer を通す。** 渡す表とローデータの
+有無が違うだけで、構成は同じにする。別実装にしていた頃は、片方に入れた注記や帰属表示が
+もう片方から落ちていた。
 
-集計表シートは1枚なので、これまで概要シートに載せていた **E3・E4 の注記は表の上に置く**。
-表だけ配ると注記が読まれずに終わる（`SPEC_PHASE1.md` §11）。
-設問ごとに選択肢ラベルが違うため、選択肢列は番号だけ（`選択肢1`〜）に揃え、
-ラベルは同じく表の上の凡例に出す。
+**E3・E4 の注記は1枚目の概要シートに置く。** 表だけ配ると注記が読まれずに終わる
+（`SPEC.md` §11）。設問ごとに選択肢ラベルが違うため、集計表シートの選択肢列は番号だけ
+（`選択肢1`〜）に揃え、ラベルは注記の凡例に出す。
 
 **ローデータに回答時刻（`responses.ts`）は載せない。** `timestamp` 列はコネクタが
 タイムゾーン付きの `datetime` で返し、openpyxl はそれをセルに書けないので、
 ダウンロードが `TypeError: Excel does not support timezones in datetimes` で丸ごと
 失敗する（`docs/issues/20260805004.md`）。tz を落として書くこともできるが、どの
 タイムゾーンで出すかを決めないまま値だけ出すことになるので載せない。診断に要る
-`latency_ms` / `attempt` は残す。CLI の `responses_raw.csv`（§7.4）は Spark 経由の
+`latency_ms` / `attempt` は残す。バッチ実行の `responses_raw.csv`（§7.3）は Spark 経由の
 別経路で、CSV はタイムゾーンを扱えるためそちらは変えていない。
 
 ローデータには `stimulus_name` と `answer_labels` を足す（`persona_sim/aggregate/rawdata.py`）。
@@ -449,7 +450,7 @@ Nemotron-Personas-Japan は CC BY 4.0 で、帰属表示が義務（`SPEC.md` §
 進捗表示をしないので、実行状態の列（`status` / `job_run_id` / `error_message`）は**持たない**。
 完走時に1行 append される現在の挙動が、そのまま「完了したら一覧に出る」と一致する。
 
-足すのは調査を識別するための2列だけ（`SPEC_PHASE1.md` §2.4、実装済み）。
+足すのは調査を識別するための2列だけ（`SPEC.md` §2.4、実装済み）。
 
 | 列 | 用途 |
 |---|---|
@@ -474,7 +475,7 @@ Volumes に置き直す運用が更新のたびに発生する。直下をソー
 同じリポジトリのコードを読むので、アプリとジョブでバージョン差による数値の食い違いが起きない。
 
 作業ディレクトリはリポジトリ直下になる。**アプリ側で cwd 相対のパスを書かないこと**
-（`config/ui_config.yaml` の既定は `app/lib/context.py` でモジュール相対に解決している）。
+（`app/config/ui_config.yaml` の場所は `app/lib/context.py` がモジュール相対に解決する）。
 
 `app.yaml` に書けるのは `command` と `env` の2キーだけ。リソース（SQL Warehouse・ジョブ・
 Volume）はワークスペースのアプリ設定か Bundle 側で宣言し、`valueFrom` で参照する。
@@ -491,7 +492,7 @@ SQL Warehouse は **ID** が渡ってくるので、`http_path` は `/sql/1.0/wa
 
 | 範囲 | 状態 |
 |---|---|
-| `config/ui_config.yaml`（§2） | 実装済み |
+| `app/config/ui_config.yaml`（§2） | 実装済み |
 | `persona_sim/uiconfig/`（§2・§3.2〜§3.4・§5） | 実装済み |
 | `persona_sim/storage/warehouse.py`（§4.2） | 実装済み。**実接続は未検証** |
 | `persona_sim/uiconfig/jobs.py`（§6.1） | 実装済み。**実投入は未検証** |

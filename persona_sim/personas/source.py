@@ -1,4 +1,4 @@
-"""Nemotron-Personas-Japan の取得（`SPEC_PHASE1.md` §2.1, §9）。
+"""Nemotron-Personas-Japan の取得（`SPEC.md` §2.1, §9）。
 
 リビジョンを固定してシャード（parquet）をダウンロードする。`huggingface_hub` は
 モジュールとしては未インストールの環境もあるため、関数内で import して

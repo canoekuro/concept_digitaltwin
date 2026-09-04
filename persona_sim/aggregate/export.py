@@ -1,4 +1,4 @@
-"""出力ファイル一式の書き出し（`SPEC_PHASE1.md` §7.4）。
+"""出力ファイル一式の書き出し（`SPEC.md` §7.3）。
 
 ```
 outputs/{survey_id}/
@@ -54,7 +54,7 @@ def write_outputs(
     *,
     formats: Sequence[str] | None = None,
 ) -> list[Path]:
-    """§7.4 の一式を書き出す。書いたファイルのパスを返す。"""
+    """§7.3 の一式を書き出す。書いたファイルのパスを返す。"""
     selected = tuple(formats if formats is not None else survey.output.formats)
     destination = Path(output_dir) / survey.survey_id
     destination.mkdir(parents=True, exist_ok=True)
@@ -106,7 +106,7 @@ def _write_responses_raw(
 # --------------------------------------------------------------------------- #
 # xlsx
 #
-# **writer は1本だけ。** バッチ実行の `report.xlsx`（§7.4）と Web UI のダウンロード
+# **writer は1本だけ。** バッチ実行の `report.xlsx`（§7.3）と Web UI のダウンロード
 # （`docs/SPEC_UI.md` §4.4）は、渡す表とローデータの有無が違うだけで構成は同じにする。
 # 別実装にしていた頃は、片方に入れた注記や帰属表示がもう片方から落ちていた。
 # --------------------------------------------------------------------------- #

@@ -84,7 +84,7 @@ model → prompt → persona_card → その他。
 
 `headings` は `main_survey.prompt` に残した。`ask_premise` / `assume_premise` /
 `infer_premise` はスクリーニング由来の名前だが、描画されるのは本調査のペルソナカード
-末尾の前提ブロックであるため（`SPEC_PHASE1.md` §6.1）。
+末尾の前提ブロックであるため（`SPEC.md` §6.1）。
 
 ### 5. `ui_config.yaml` の2群化（項目2・3）
 
@@ -123,7 +123,7 @@ CLI やノートブックからは従来どおり指定できる。
   `main_survey.model` へ。`prompt` / `persona_card` を省略している理由（`fake`
   エンドポイントは LLM を呼ばない）をコメントで明示。
 - `notebooks/quickstart.ipynb`: 実行セルとコメントアウトされた本番規模セルの両方を新構造へ。
-- `SPEC_PHASE1.md` §3（調査定義スキーマ）・§4.2（`infer` の例と、判定プロンプトを本調査と
+- `SPEC.md` §3（調査定義スキーマ）・§4.2（`infer` の例と、判定プロンプトを本調査と
   分ける理由）・§6.1（**「1行目の属性行と `persona`（総括）は固定」が偽になったので書き換え**。
   3ブロックすべて設定可能である旨と `suffix` の意味を追記）・§10.3。
 - `docs/SPEC_UI.md` §2（2層の表 ＋ 「`ui_config.yaml` 自身も2群に分かれる」節と

@@ -2,7 +2,7 @@
 
 - **日時**: 2026/07/27 23:45
 - **計画**: [20260727-234500-m5-aggregate-output-plan.md](20260727-234500-m5-aggregate-output-plan.md)
-- **完了条件**: `SPEC_PHASE1.md` §7.4 の一式が出る → **達成**
+- **完了条件**: `SPEC.md` §7.4 の一式が出る → **達成**
 
 ## 1. 変更内容
 
@@ -26,7 +26,7 @@
 - `panel/validate.py` — `output.segments` / `output.formats` の検査を追加
 - `run/flags.py` — `QUALITY_FLAGS`（`retried` を含まない）を追加
 - `cli.py` — `aggregate` / `export` を実装。スタブを削除
-- `SPEC_PHASE1.md` — §2.3 / §2.6 に `answer_codes` を追加し、バージョンを 1.0 に
+- `SPEC.md` — §2.3 / §2.6 に `answer_codes` を追加し、バージョンを 1.0 に
 - `README.md` / `notebooks/quickstart.ipynb` — M5 の内容に更新
 
 ### 設計上の要点

@@ -2,7 +2,7 @@
 
 - 日時: 2026-09-02 08:34:42 UTC
 - 対象: `persona_sim/panel/loader.py` / `persona_sim/panel/schema.py` /
-  `persona_sim/storage/warehouse.py` / `SPEC_PHASE1.md` §9 / `docs/SPEC_UI.md` §4.3 /
+  `persona_sim/storage/warehouse.py` / `SPEC.md` §9 / `docs/SPEC_UI.md` §4.3 /
   `tests/test_survey_loader.py` / `tests/test_warehouse.py`
 - 起点: 結果閲覧ページで「データを取得」を押すと
   `SurveyDefinitionError: main_survey.prompt.rules.reasoning: prompt.rules.reasoning は
@@ -54,7 +54,7 @@
    - `_reject_unusable_questions()` の docstring を更新（記録の読み直しはここを通らない）。
 2. `persona_sim/panel/schema.py`: `SurveyDefinition.from_record: bool = False` を追加。
 3. `persona_sim/storage/warehouse.py`: `fetch_survey()` を `survey_from_record()` 経由に。
-4. `SPEC_PHASE1.md` §9 / `docs/SPEC_UI.md` §4.3 に、復元の範囲と「実行には使えない」ことを明記。
+4. `SPEC.md` §9 / `docs/SPEC_UI.md` §4.3 に、復元の範囲と「実行には使えない」ことを明記。
 5. テスト
    - `tests/test_survey_loader.py`: 旧形式（1本文字列の `reasoning`／旧トップレベル
      `model:` `prompt:`／廃止した `temperature`／`panel.screener`）の記録が読めること、

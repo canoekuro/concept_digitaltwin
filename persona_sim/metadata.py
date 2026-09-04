@@ -1,4 +1,4 @@
-"""実行メタデータ（`SPEC_PHASE1.md` §9）。
+"""実行メタデータ（`SPEC.md` §9）。
 
 利用側が実査と突き合わせるために必要な情報を、`runs` テーブルと
 `outputs/{survey_id}/run_metadata.json` の両方に残す。

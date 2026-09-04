@@ -1,6 +1,6 @@
-"""集計の実行（`SPEC_PHASE1.md` §7）。
+"""集計の実行（`SPEC.md` §7）。
 
-`responses` を読んで §7.1 の表を作り、§7.4 のファイル一式に書き出す。
+`responses` を読んで §7.1 の表を作り、§7.3 のファイル一式に書き出す。
 
 **集計結果はテーブルに保存しない。** 保存した表と生データが食い違ったとき、
 どちらが正しいのかを決める手立てが無いため。読むたびに数え直す。
@@ -17,9 +17,7 @@ from persona_sim.aggregate import frame
 from persona_sim.aggregate import segments as segment_axes
 from persona_sim.aggregate.crosstab import (
     Answer,
-    ConceptSummaryRow,
     Crosstab,
-    concept_summary,
     crosstabs,
     tabulated_measures,
 )
@@ -40,16 +38,10 @@ from persona_sim.run.run import FLAG_WARNING_THRESHOLD
 if TYPE_CHECKING:  # pragma: no cover
     from pyspark.sql import SparkSession
 
-#: 集計時のトップライン軸。`output.segments` に何が指定されていても必ず出す。
-TOPLINE_SEGMENTS = (segment_axes.TOTAL,)
-
-
 @dataclass
 class AggregateResult:
     survey_id: str
     crosstabs: list[Crosstab] = field(default_factory=list)
-    topline: list[ConceptSummaryRow] = field(default_factory=list)
-    by_segment: list[ConceptSummaryRow] = field(default_factory=list)
     tables: list[Table] = field(default_factory=list)
     #: 書き出したファイル。
     written: list[Path] = field(default_factory=list)
@@ -102,8 +94,6 @@ def build_result(
 
     result = AggregateResult(survey_id=survey.survey_id, answers=len(answers))
     result.crosstabs = crosstabs(survey, answers, output_segments)
-    result.topline = concept_summary(survey, answers, TOPLINE_SEGMENTS)
-    result.by_segment = concept_summary(survey, answers, output_segments)
     result.notes = _notes(answers) + _off_target_notes(survey, answers)
     result.tables = _build_tables(survey, panel_rows, result)
     return result

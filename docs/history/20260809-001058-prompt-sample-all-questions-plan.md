@@ -1,7 +1,7 @@
 # 実行プロンプトの記録を1ペルソナの全設問ぶんに広げる（計画）
 
 - 日時: 2026-08-09 00:10:58 UTC
-- 対象: `SPEC_PHASE1.md` §9 の `prompt_sample`
+- 対象: `SPEC.md` §9 の `prompt_sample`
 - 起点: 「いま実行すると1セッション分しか保存されないが、1サンプルの全設問ぶんを
   保存できるか」という利用者からの問い
 
@@ -74,7 +74,7 @@
 
 ### 追随
 
-- `SPEC_PHASE1.md` §9 の説明文と JSON 例。
+- `SPEC.md` §9 の説明文と JSON 例。
 - `notebooks/quickstart.ipynb` の説明セル（「1ペルソナ分」の文言）。
 - `tests/test_run_spark.py` の `prompt_sample` 系4テスト。
 - `docs/history/` の plan・result ペアと `CHANGELOG.md`。

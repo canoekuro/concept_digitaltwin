@@ -1,4 +1,4 @@
-"""プロンプト組み立て（`SPEC_PHASE1.md` §6.1）。
+"""プロンプト組み立て（`SPEC.md` §6.1）。
 
 このモジュールは **pyspark に依存しない**。純関数のみで構成し、Spark を
 起動せずに単体テストできるようにする。
@@ -24,7 +24,7 @@ from persona_sim.panel.schema import (
     Stimulus,
 )
 
-#: [system] ブロックの既定。`SPEC_PHASE1.md` §6.1 と一字一句同じにすること。
+#: [system] ブロックの既定。`SPEC.md` §6.1 と一字一句同じにすること。
 #: 調査定義の `prompt.system` で差し替えられる。
 SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT
 

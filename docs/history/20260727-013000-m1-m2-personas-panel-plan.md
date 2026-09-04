@@ -1,7 +1,7 @@
 # 実装計画: M1 `personas_base` / M2 ジョブ定義・validate・panel
 
 - **日時**: 2026/07/27 01:30
-- **対象**: `SPEC_PHASE1.md` §12 の M1・M2
+- **対象**: `SPEC.md` §12 の M1・M2
 - **状態**: 承認済み（実装着手）
 
 ## 目的
@@ -73,7 +73,7 @@ Spark 側は結合するだけにする。Spark 抜きで割り当ての正し�
 
 ## 対象ファイル
 
-- 仕様: `SPEC_PHASE1.md`（0.6 → 0.7）、`AGENTS.md`（不変条件）、`README.md`
+- 仕様: `SPEC.md`（0.6 → 0.7）、`AGENTS.md`（不変条件）、`README.md`
 - 調査結果: `docs/schema/occupation-parsing.md`（新規）
 - 実装: `persona_sim/`（新規パッケージ。`cli` / `config` / `spark` / `errors` /
   `storage/{locator,delta}` / `personas/{source,normalize,build}` /

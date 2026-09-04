@@ -1,4 +1,4 @@
-"""Databricks Model Serving 呼び出し（`SPEC_PHASE1.md` §6.5）。
+"""Databricks Model Serving 呼び出し（`SPEC.md` §6.5）。
 
 `databricks-sdk` の `serving_endpoints.query` は `extra_params` が `Dict[str, str]` で
 構造化出力の入れ子スキーマを渡せないため、OpenAI 互換の invocations エンドポイントを

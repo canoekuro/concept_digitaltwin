@@ -1,4 +1,4 @@
-"""集計の算術（`SPEC_PHASE1.md` §7.1・§7.2）。
+"""集計の算術（`SPEC.md` §7.1）。
 
 期待値はすべて手計算で置く。Spark を起動しないので、集計の意味が変わる変更は
 このファイルが最初に落ちる。
@@ -11,7 +11,6 @@ import pytest
 from persona_sim.aggregate.crosstab import (
     Answer,
     compute_metric,
-    concept_summary,
     crosstab,
     crosstabs,
     to_defined_codes,
@@ -258,20 +257,3 @@ def test_crosstabs_cover_every_stimulus_and_closed_question(survey_dict):
     keys = {(table.stimulus_id, table.measure) for table in tables}
     # コンセプト3件 × 選択式1問。自由回答（q_reason）は表を作らない。
     assert keys == {("c1", "q_intent"), ("c2", "q_intent"), ("c3", "q_intent")}
-
-
-def test_concept_summary_has_one_row_per_stimulus(survey_dict):
-    survey = survey_from_dict(survey_dict)
-    answers = [
-        answer(1, stimulus_id="c1"),
-        answer(4, stimulus_id="c2"),
-        answer(5, stimulus_id="c3"),
-    ]
-    rows = concept_summary(survey, answers, ["total"])
-
-    assert [row.stimulus_id for row in rows] == ["c1", "c2", "c3"]
-    top_box, mean = rows[0].metrics["q_intent"]
-    assert top_box == pytest.approx(1.0)
-    assert mean == pytest.approx(5.0)
-    # 「まったく購入したくない」は T2B に入らない。
-    assert rows[2].metrics["q_intent"][0] == pytest.approx(0.0)

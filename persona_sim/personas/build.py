@@ -1,4 +1,4 @@
-"""`personas_base` の取り込みと正規化（`SPEC_PHASE1.md` §2.1）。
+"""`personas_base` の取り込みと正規化（`SPEC.md` §2.1）。
 
 occupation 分解・年代バンドの Spark 式は `persona_sim.personas.normalize` の
 語彙定数から組み立てる。**語彙をここに書き写さない。** 乖離を検出できなくなる
@@ -22,7 +22,7 @@ from persona_sim.storage.locator import PERSONAS_BASE, locator
 if TYPE_CHECKING:  # pragma: no cover
     from pyspark.sql import Column, DataFrame, SparkSession
 
-#: `personas_base` の列（`SPEC_PHASE1.md` §2.1）。順序も含めてこの通りに書き出す。
+#: `personas_base` の列（`SPEC.md` §2.1）。順序も含めてこの通りに書き出す。
 PERSONAS_BASE_COLUMNS: tuple[str, ...] = (
     "uuid",
     "sex",

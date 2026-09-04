@@ -94,7 +94,7 @@ IDが一意になった代償として、束ねるキーを明示する `measure
 | `persona_sim/aggregate/{crosstab,tables,aggregate,export}.py` | 束ねキーを `measure` に |
 | `persona_sim/uiconfig/build.py` | 設問を slot 展開して書き出す |
 | `persona_sim/metadata.py` | `questions_memory` |
-| `SPEC_PHASE1.md` / `CHANGELOG.md` / `examples/` / `notebooks/` | 仕様・例・ノートブック |
+| `SPEC.md` / `CHANGELOG.md` / `examples/` / `notebooks/` | 仕様・例・ノートブック |
 
 ## 検証方針
 

@@ -23,7 +23,7 @@ from persona_sim.storage import warehouse
 from persona_sim.uiconfig import target_summary
 
 #: 属性別クロス集計の選択肢に出す表。コンセプト × 設問のものだけに絞る。
-#: コンセプト比較表とパネル構成表は選ばせない（`docs/issues/20260805002.md`）。
+#: 積んだ表とパネル構成表は選ばせない（`docs/issues/20260805002.md`）。
 CROSSTAB_PREFIX = "crosstab_"
 
 ui = context.ui_config()

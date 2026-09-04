@@ -1,4 +1,4 @@
-"""集計に使うデータの読み込み（`SPEC_PHASE1.md` §7）。
+"""集計に使うデータの読み込み（`SPEC.md` §7）。
 
 `responses` × `panels` × `personas_base` を結合し、算術の入力になる `Answer` を組み立てる。
 **Spark を使うのはここだけ**で、集計そのものは `crosstab` の純関数が行う。
@@ -118,7 +118,7 @@ def load_open_ends(
 def stream_responses_raw(
     spark: SparkSession, survey: SurveyDefinition, storage: StorageConfig
 ) -> tuple[tuple[str, ...], Iterator[list[Any]]]:
-    """生データ全件（§7.4 `responses_raw.csv`）。件数が伸びうるので流しながら返す。"""
+    """生データ全件（§7.3 `responses_raw.csv`）。件数が伸びうるので流しながら返す。"""
     from pyspark.sql import functions as F
 
     responses = (

@@ -1,4 +1,4 @@
-"""調査定義（YAML / dict）の読み込み（`SPEC_PHASE1.md` §3, §10.2）。
+"""調査定義（YAML / dict）の読み込み（`SPEC.md` §3, §10.2）。
 
 構造の不正（未知のキー・型違い・列挙値の誤り・廃止フィールド）はここで停止する。
 フィールドをまたぐ整合性（E1 / E6）と警告は `persona_sim.panel.validate` が扱う。
@@ -602,7 +602,7 @@ def _remember(value: Any, path: str) -> Remember:
 def _question_type(value: Any, path: str) -> QuestionType:
     if isinstance(value, str) and value in UNSUPPORTED_QUESTION_TYPES:
         raise SurveyDefinitionError(
-            f"{path}: 設問タイプ {value!r} はフェーズ1では非対応（SPEC_PHASE1.md §3.1）。"
+            f"{path}: 設問タイプ {value!r} はフェーズ1では非対応（SPEC.md §3.1）。"
             f" 対応するのは {', '.join(t.value for t in QuestionType)}"
         )
     return _enum(QuestionType, value, path)

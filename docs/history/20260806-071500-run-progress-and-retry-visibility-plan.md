@@ -3,7 +3,7 @@
 - **日付**: 2026/08/06 07:15
 - **対象**: `persona_sim/run/progress.py`（新規）、`persona_sim/llm/{client,databricks,fake}.py`、
   `persona_sim/run/{run,executor}.py`、`persona_sim/panel/{screening,infer}.py`、
-  `persona_sim/{cli,metadata}.py`、`notebooks/run_survey.ipynb`、`SPEC_PHASE1.md`
+  `persona_sim/{cli,metadata}.py`、`notebooks/run_survey.ipynb`、`SPEC.md`
 
 ## 背景
 
@@ -64,7 +64,7 @@ CLI の `_progress` は前者しか想定していないため、**`persona-sim 
 - `DatabricksServingClient` にスレッドセーフなカウンタを持たせる。成功・失敗どちらで抜けても計上する。
 - 本調査（`RunResult`）とスクリーニング（`ScreeningResult`）の両方に載せ、5%（E3・E4 と同じ閾値）を
   超えたら `W_ENDPOINT_RETRY` を `warnings` に積む。文面には内訳と次の一手を含める。
-- `run_metadata.json` の `model.endpoint_retries` に残す。`SPEC_PHASE1.md` §9・§11 を同時に更新する
+- `run_metadata.json` の `model.endpoint_retries` に残す。`SPEC.md` §9・§11 を同時に更新する
   （仕様が実装の根拠なので、書かずに実装するとドリフトになる）。
 
 ### 4. ノートブック

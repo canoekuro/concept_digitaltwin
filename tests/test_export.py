@@ -1,4 +1,4 @@
-"""表の整形とファイル出力（`SPEC_PHASE1.md` §7.1・§7.4）。
+"""表の整形とファイル出力（`SPEC.md` §7.1・§7.3）。
 
 Spark を起動せずに、表の見た目と xlsx の構造だけを見る。
 """
@@ -10,7 +10,7 @@ import csv
 import pytest
 
 from persona_sim.aggregate.aggregate import AggregateResult
-from persona_sim.aggregate.crosstab import Answer, concept_summary, crosstabs
+from persona_sim.aggregate.crosstab import Answer, crosstabs
 from persona_sim.aggregate.export import (
     CSV_ENCODING,
     RAW_SHEET,
@@ -41,8 +41,6 @@ def _result(survey) -> AggregateResult:
     answers = _answers()
     result = AggregateResult(survey_id=survey.survey_id, answers=len(answers))
     result.crosstabs = crosstabs(survey, answers, ["total", "sex"])
-    result.topline = concept_summary(survey, answers, ["total"])
-    result.by_segment = concept_summary(survey, answers, ["total", "sex"])
     result.tables = [
         concept_axis_table(
             survey,
@@ -313,7 +311,7 @@ def test_ui_workbook_carries_the_table_and_the_raw_data(tmp_path, survey_dict):
 
 
 def test_ui_workbook_keeps_the_notes_on_the_first_sheet(tmp_path, survey_dict):
-    """E3/E4 の注記は落とさない（`SPEC_PHASE1.md` §11）。表だけ読まれて終わらせない。"""
+    """E3/E4 の注記は落とさない（`SPEC.md` §11）。表だけ読まれて終わらせない。"""
     survey = survey_from_dict(survey_dict)
     workbook = _ui_workbook(tmp_path, survey, notes=["品質フラグの立った回答が 30% ある"])
 
