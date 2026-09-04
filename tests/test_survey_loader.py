@@ -18,7 +18,6 @@ from persona_sim.panel.loader import (
 from persona_sim.panel.schema import (
     PersonaCardConfig,
     PromptConfig,
-    ScreenerLogic,
 )
 from tests.conftest import base_survey_dict
 
@@ -62,7 +61,6 @@ def test_removed_infer_model_temperature_is_rejected_with_migration_hint():
     """判定モデル（`screening.model`）側にも同じ廃止キーを書けてはならない。"""
     data = base_survey_dict()
     data["screening"] = {
-        "mode": "infer",
         "oversample_factor": 2,
         "conditions": ["週に1回以上コーヒーを飲む"],
         "model": {"temperature": 0.4},
@@ -99,7 +97,6 @@ def test_new_structure_round_trips():
         "model": {"deployment": "judge", "max_tokens": 256},
         "prompt": {"system": "選定してください。", "rule": "番号を挙げてください。"},
         "persona_card": {"attributes": [], "include_summary": True},
-        "mode": "infer",
         "conditions": ["コーヒーを週1回以上飲む"],
         "batch_size": 10,
     }
@@ -309,93 +306,39 @@ def test_unresolvable_placeholder_in_rules_is_rejected(key, template):
 # --------------------------------------------------------------------------- #
 
 
-def _ask_question() -> dict:
-    return {
-        "id": "sc1",
-        "text": "週に1回以上コーヒーを飲みますか。",
-        "type": "single",
-        "options": ["はい", "いいえ"],
-        "pass_if": [1],
+def test_screener_questions_are_rejected():
+    """選択肢を提示して本人に答えさせる方式は無い。書けたら止める。"""
+    data = base_survey_dict()
+    data["screening"] = {
+        "conditions": ["コーヒーを週1回以上飲む"],
+        "questions": [{"id": "s1", "text": "飲みますか。", "options": ["はい"], "pass_if": [1]}],
     }
-
-
-@pytest.mark.parametrize("mode", ["assume", "infer"])
-def test_questions_are_rejected_for_modes_that_show_no_options(mode):
-    """選択肢を提示しない方式に設問を書かせない。
-
-    黙って読めると「条件を書いたのに効いていない」ことに実行後まで気づけない。
-    """
-    data = base_survey_dict()
-    data["screening"] = {"mode": mode, "questions": [_ask_question()]}
-    with pytest.raises(SurveyDefinitionError) as excinfo:
+    with pytest.raises(SurveyDefinitionError, match="未知のキー questions"):
         survey_from_dict(data)
-    message = str(excinfo.value)
-    assert "conditions" in message  # 移し先を示していること
 
 
-def test_conditions_are_rejected_for_ask():
-    data = base_survey_dict()
-    data["screening"] = {"mode": "ask", "conditions": ["コーヒーを週1回以上飲む"]}
-    with pytest.raises(SurveyDefinitionError) as excinfo:
-        survey_from_dict(data)
-    assert "questions" in str(excinfo.value)
-
-
-def test_logic_is_rejected_for_infer():
-    """`infer` では `logic` が効かないので、書けたら止める。
+def test_logic_is_rejected():
+    """条件をどう結合するかは `screening.prompt.rule` の文面が決める。
 
     以前は `logic` から判定プロンプトに一文を差し込んでいたが、その文が
     `prompt.rule` の直前という最も効く位置に入るため、プロンプトを書き換えても
-    判定が変わらなかった。文を消した以上 `logic` は何もしないので、
-    「設定したつもり」の記録を残させない（`AGENTS.md` の不変条件）。
+    判定が変わらなかった。文を消した以上 `logic` は何もしない。
     """
     data = base_survey_dict()
-    data["screening"] = {
-        "mode": "infer",
-        "conditions": ["コーヒーを週1回以上飲む"],
-        "logic": "any",
-    }
-    with pytest.raises(SurveyDefinitionError) as excinfo:
+    data["screening"] = {"conditions": ["コーヒーを週1回以上飲む"], "logic": "any"}
+    with pytest.raises(SurveyDefinitionError, match="未知のキー logic"):
         survey_from_dict(data)
-    message = str(excinfo.value)
-    assert "screening.logic" in message
-    assert "screening.prompt.rule" in message  # 移し先を示していること
 
 
-def test_infer_without_logic_is_accepted():
-    """既定のまま（キーを書かない）は通す。既定値まで拒むと何も書けなくなる。"""
-    data = base_survey_dict()
-    data["screening"] = {"mode": "infer", "conditions": ["コーヒーを週1回以上飲む"]}
-    assert survey_from_dict(data).screening.logic is ScreenerLogic.ALL
-
-
-def test_logic_still_works_for_ask():
-    """`ask` では通過判定の結合方法として今も効く。"""
-    data = base_survey_dict()
-    data["screening"] = {"mode": "ask", "logic": "any", "questions": [_ask_question()]}
-    assert survey_from_dict(data).screening.logic is ScreenerLogic.ANY
-
-
-@pytest.mark.parametrize("mode", ["assume", "infer"])
-def test_conditions_are_read_as_written(mode):
+def test_conditions_are_read_as_written():
+    """**言い換えない。** 判定プロンプトと前提ブロックに同じ文が渡る。"""
     data = base_survey_dict()
     data["screening"] = {
-        "mode": mode,
         "conditions": ["コーヒーを週1回以上飲む", "自宅で豆から淹れる"],
     }
     screener = survey_from_dict(data).screening
     assert screener.conditions == ("コーヒーを週1回以上飲む", "自宅で豆から淹れる")
-    assert screener.questions == ()
     assert screener.condition_texts() == screener.conditions
-
-
-def test_ask_builds_condition_texts_from_questions():
-    """`ask` でも条件文の出口は同じ。前提文が無ければ設問文と通過選択肢から組み立てる。"""
-    data = base_survey_dict()
-    data["screening"] = {"mode": "ask", "questions": [_ask_question()]}
-    screener = survey_from_dict(data).screening
-    assert screener.conditions == ()
-    assert screener.condition_texts() == ("週に1回以上コーヒーを飲みますか。: はい のいずれか",)
 
 
 # --------------------------------------------------------------------------- #
@@ -454,7 +397,7 @@ def test_omitted_model_and_screening_defaults_match_the_dataclass_defaults():
 
     data = base_survey_dict()
     data["main_survey"]["model"] = {"endpoint": "fake", "deployment": "test-deployment"}
-    data["screening"] = {"mode": "ask", "questions": [_ask_question()]}
+    data["screening"] = {"conditions": ["週に1回以上コーヒーを飲む"]}
     survey = survey_from_dict(data)
 
     defaults = ModelConfig(endpoint=Endpoint.FAKE, deployment="test-deployment")
@@ -628,15 +571,12 @@ def test_record_with_removed_model_fields_is_readable():
     assert survey_from_record(data).model == RECORD_MODEL
 
 
-def test_record_reads_the_screening_mode():
-    """通過率の注記が方式を見る。実測・推定・未測定の区別は数字の意味そのもの。"""
+def test_record_knows_that_screening_was_run():
+    """通過率の注記が、スクリーニングを実施したかどうかを見る。"""
     data = base_survey_dict()
-    data["screening"] = {"mode": "infer", "conditions": ["週1回以上コーヒーを飲む"]}
+    data["screening"] = {"conditions": ["週1回以上コーヒーを飲む"]}
 
-    screening = survey_from_record(data).screening
-
-    assert screening is not None
-    assert screening.infers is True
+    assert survey_from_record(data).screening is not None
 
 
 def test_record_reads_the_screening_mode_from_the_old_place():
@@ -659,9 +599,7 @@ def test_record_reads_the_screening_mode_from_the_old_place():
         survey_from_dict(data)
 
     # 記録は事実で、書き直させる相手がいない。旧レイアウトのまま読めること。
-    screening = survey_from_record(data).screening
-    assert screening is not None
-    assert screening.asks is True
+    assert survey_from_record(data).screening is not None
 
 
 def test_record_without_screening_stays_none(survey_dict):

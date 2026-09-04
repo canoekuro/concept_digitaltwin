@@ -154,110 +154,57 @@ def test_top_box_out_of_range_is_rejected():
 
 
 def _screener(**overrides):
-    """方式に合った形のスクリーナー定義（§4.2）。
-
-    `ask` は選択肢を見せて答えさせるので `questions`、`assume` / `infer` は
-    選択肢を提示しないので自然言語の `conditions`。
-    """
-    mode = overrides.get("mode", "ask")
-    screener: dict = {"oversample_factor": 4}
-    if mode == "ask":
-        screener["questions"] = [
-            {
-                "id": "sc1",
-                "text": "飲用頻度は。",
-                "type": "single",
-                "options": ["週2回以上", "それ以下"],
-                "pass_if": [1],
-            }
-        ]
-    else:
-        screener["conditions"] = ["週2回以上飲む"]
+    """スクリーナー定義（§4.2）。対象者条件を自然言語で書く方式だけがある。"""
+    screener: dict = {"oversample_factor": 4, "conditions": ["週2回以上飲む"]}
     screener.update(overrides)
     return screener
 
 
-def test_ask_screener_passes():
+def test_screener_passes():
     data = base_survey_dict()
     data["screening"] = _screener()
     assert validate_static(survey_from_dict(data)).ok
 
 
-def test_pass_if_out_of_range_is_rejected():
+def test_conditions_are_required():
+    """条件の文言が無ければ、判定用 LLM に見せるものが無い。"""
     data = base_survey_dict()
-    data["screening"] = _screener()
-    data["screening"]["questions"][0]["pass_if"] = [1, 5]
-    report = validate_static(survey_from_dict(data))
-    assert any("pass_if" in issue.message for issue in report.errors)
-
-
-def test_open_screener_question_is_rejected():
-    """自由回答では通過を機械判定できない。"""
-    data = base_survey_dict()
-    data["screening"] = _screener()
-    data["screening"]["questions"][0]["type"] = "open"
-    report = validate_static(survey_from_dict(data))
-    assert any("single / multi" in issue.message for issue in report.errors)
-
-
-def test_empty_pass_if_is_rejected():
-    data = base_survey_dict()
-    data["screening"] = _screener()
-    data["screening"]["questions"][0]["pass_if"] = []
-    report = validate_static(survey_from_dict(data))
-    assert any("pass_if" in issue.message for issue in report.errors)
-
-
-def test_assume_requires_conditions():
-    """条件の文言が無ければ、何もペルソナに付与できない。"""
-    data = base_survey_dict()
-    data["screening"] = _screener(mode="assume", conditions=[])
+    data["screening"] = _screener(conditions=[])
     with pytest.raises(SurveyDefinitionError) as excinfo:
         survey_from_dict(data)
     assert "screening.conditions" in str(excinfo.value)
 
 
-def test_assume_rejects_blank_conditions():
+def test_blank_conditions_are_rejected():
     data = base_survey_dict()
-    data["screening"] = _screener(mode="assume", conditions=["   "])
+    data["screening"] = _screener(conditions=["   "])
     report = validate_static(survey_from_dict(data))
     assert any("conditions[0]" in issue.message for issue in report.errors)
 
 
-def test_assume_with_conditions_passes():
+def test_oversample_factor_must_be_at_least_one():
     data = base_survey_dict()
-    data["screening"] = _screener(mode="assume")
-    del data["screening"]["oversample_factor"]
-    assert validate_static(survey_from_dict(data)).ok
-
-
-def test_assume_warns_about_unused_oversample_factor():
-    """効かない指定を黙って無視しない。"""
-    data = base_survey_dict()
-    data["screening"] = _screener(mode="assume")
+    data["screening"] = _screener(oversample_factor=0)
     report = validate_static(survey_from_dict(data))
-    assert report.ok
-    assert "W_SCREENER_OVERSAMPLE" in _codes(report.warnings)
+    assert any("oversample_factor" in issue.message for issue in report.errors)
 
 
-def test_estimate_shows_both_screening_methods():
-    """費用とのバーターで方式を選ぶので、選ばなかった側も見えている必要がある。"""
+def test_estimate_counts_the_judgement_calls():
+    """1バッチ＝1呼び出し。候補は size × oversample_factor 人。"""
     data = base_survey_dict()
-    data["screening"] = _screener(mode="assume")
+    data["screening"] = _screener(batch_size=2)
     estimate = validate_static(survey_from_dict(data)).estimate
+    assert estimate is not None
+    # パネル4人 × 4倍 = 16人 ÷ バッチ2 = 8回
+    assert estimate.screener_sessions == 8
+    assert any("スクリーニング" in line for line in estimate.lines())
 
+
+def test_estimate_has_no_screening_line_without_a_screener():
+    estimate = validate_static(survey_from_dict(base_survey_dict())).estimate
     assert estimate is not None
     assert estimate.screener_sessions == 0
-    assert estimate.screener_sessions_if_ask == 4 * 4 * 1  # size × factor × 条件数
-    assert any("ask なら" in line for line in estimate.lines())
-
-
-def test_estimate_counts_screener_sessions_for_ask():
-    data = base_survey_dict()
-    data["screening"] = _screener()
-    estimate = validate_static(survey_from_dict(data)).estimate
-    assert estimate is not None
-    assert estimate.screener_sessions == 16
+    assert not any("スクリーニング" in line for line in estimate.lines())
 
 
 # --------------------------------------------------------------------------- #

@@ -5,7 +5,7 @@
 #
 # 本番規模の examples/survey_sample.yaml と違い、
 # - model.endpoint: fake なので実エンドポイント不要・課金されない
-# - panel.size を10人に抑え、screener.mode: assume で判定の LLM 呼び出しも無い
+# - panel.size を10人に抑え、screening も書かないので判定の LLM 呼び出しが無い
 # ため、`validate → panel → screen → run → aggregate → metadata` を素早く通せる。
 # deploy/README.md の「ノートブック単体の動作確認」を参照。
 #
@@ -28,12 +28,6 @@ panel:
       - {cell_id: "F_20_40s", sex: "女", age_min: 20, age_max: 49, n: 5}
   filters:
     age_min: 20          # 酒類カテゴリなので未成年を含めない
-
-# 聞かずに前提として与える（費用0・LLM 呼び出しなし）
-screening:
-  mode: "assume"
-  conditions:
-    - "缶チューハイ・缶ハイボールを月1回以上飲む"
 
 stimuli:
   - id: "c1"

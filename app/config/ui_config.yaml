@@ -64,12 +64,9 @@ survey_defaults:
         - { field: "skills_and_expertise", label: "スキル・専門性" }
         - { field: "career_goals_and_ambitions", label: "キャリア目標" }
 
-    mode: "infer"              # ask（実際に聞く）| assume（前提として与える）| infer（蓋然性で選ぶ）
     oversample_factor: 2       # 候補の抽出倍率。通過者が構造的に足りないときは早期に停止する
-    # ask のとき、複数のスクリーナー設問の通過判定をどう結合するか。
-    # infer では使わない（すべて満たすのか、いずれかで足りるのかは上の prompt.rule に書く）。
-    logic: "all"
     batch_size: 5             # 1回の判定に渡すペルソナ数
+    # 条件をどう結合するか（すべて満たす／いずれかで足りる）は上の prompt.rule に書く。
 
   # ----------------------------------------------------------------------------
   # A-2. 本調査（回答生成）

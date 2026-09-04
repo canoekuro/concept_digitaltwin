@@ -10,62 +10,27 @@ from dataclasses import dataclass
 import pytest
 
 from persona_sim.panel.loader import survey_from_dict
-from persona_sim.panel.schema import (
-    PersonaCardConfig,
-    PromptHeadings,
-    ScreenerLogic,
-    ScreenerMode,
-    ScreeningConfig,
-)
+from persona_sim.panel.schema import PersonaCardConfig, PromptHeadings, ScreeningConfig
 from persona_sim.panel.screening import (
-    ask_premise,
-    assume_premise,
-    build_screener_sessions,
+    INFER_QUESTION_ID,
     incidence_from_panels,
+    infer_premise,
     judge,
-    persona_passed,
-    question_passed,
-    screener_session_count,
     screening_fingerprint,
     skipped_session_count,
-    to_question,
     unreachable_cells,
 )
 from persona_sim.run.prompt import persona_card
-from persona_sim.run.session import NO_STIMULUS
 from tests.conftest import base_survey_dict
 
-BEER = {
-    "id": "sc1",
-    "text": "ビールをどのくらいの頻度で飲みますか。",
-    "label": "ビールの飲用頻度",
-    "type": "single",
-    "options": ["週2回以上", "週1回", "月2〜3回", "月1回", "それ以下・飲まない"],
-    "pass_if": [1, 2, 3, 4],
-    "premise": "ビールを月1回以上飲む",
-}
-AGE_CHECK = {
-    "id": "sc2",
-    "text": "自分で酒類を購入しますか。",
-    "type": "single",
-    "options": ["する", "しない"],
-    "pass_if": [1],
-    "premise": "自分で酒類を購入する",
-}
-
-
-#: `assume` / `infer` の書き方。`ask` の premise と同じ文言を自然言語で並べる。
+#: 対象者条件。自然言語のまま判定プロンプトと前提ブロックへ渡る。
 CONDITIONS = ["ビールを月1回以上飲む", "自分で酒類を購入する"]
 
 
 def _survey(**screener_overrides):
-    """方式に合った形のスクリーナーを持つ調査定義。
-
-    `ask` は `questions`、`assume` / `infer` は `conditions`（§4.2）。
-    """
+    """スクリーナーを持つ調査定義。"""
     data = base_survey_dict()
-    mode = screener_overrides.get("mode", "ask")
-    screener: dict = {"questions": [BEER, AGE_CHECK]} if mode == "ask" else {"conditions": CONDITIONS}
+    screener: dict = {"conditions": CONDITIONS}
     screener.update(screener_overrides)
     data["screening"] = screener
     return survey_from_dict(data)
@@ -80,65 +45,21 @@ def _screener(**overrides):
 # --------------------------------------------------------------------------- #
 
 
-def test_question_passes_when_code_is_in_pass_if():
-    question = _screener().questions[0]
-    assert question_passed(question, [1]) is True
-    assert question_passed(question, [4]) is True
-    assert question_passed(question, [5]) is False
-
-
-def test_parse_failure_is_treated_as_not_passing():
-    """番号が取れなかった回答で通過させると、条件を満たさない人が混ざる。"""
-    question = _screener().questions[0]
-    assert question_passed(question, []) is False
-
-
-def test_multi_passes_when_any_selected_code_qualifies():
-    data = base_survey_dict()
-    data["screening"] = {
-        "questions": [
-            {
-                "id": "sc1",
-                "text": "飲むものを選んでください。",
-                "type": "multi",
-                "options": ["ビール", "ワイン", "日本酒"],
-                "pass_if": [1],
-                "premise": "ビールを飲む",
-            }
-        ]
-    }
-    question = survey_from_dict(data).screening.questions[0]
-    assert question_passed(question, [2, 1]) is True
-    assert question_passed(question, [2, 3]) is False
-
-
-def test_logic_all_requires_every_question():
-    screener = _screener(logic="all")
-    assert persona_passed(screener, {"sc1": [1], "sc2": [1]}) is True
-    assert persona_passed(screener, {"sc1": [1], "sc2": [2]}) is False
-
-
-def test_logic_any_requires_one_question():
-    screener = _screener(logic="any")
-    assert screener.logic is ScreenerLogic.ANY
-    assert persona_passed(screener, {"sc1": [1], "sc2": [2]}) is True
-    assert persona_passed(screener, {"sc1": [5], "sc2": [2]}) is False
-
-
-def test_missing_answer_fails_under_all():
-    screener = _screener(logic="all")
-    assert persona_passed(screener, {"sc1": [1]}) is False
-
-
 def test_judge_separates_passed_and_failed():
-    screener = _screener()
+    """判定は候補1人につき1回。予約IDの下に通過（`[1]`）／非通過（`[]`）が入る。"""
     verdict = judge(
-        screener,
-        {"u1": {"sc1": [1], "sc2": [1]}, "u2": {"sc1": [5], "sc2": [1]}},
+        {"u1": {INFER_QUESTION_ID: [1]}, "u2": {INFER_QUESTION_ID: []}},
     )
     assert verdict.passed == {"u1"}
     assert verdict.failed == {"u2"}
     assert verdict.tested == {"u1", "u2"}
+
+
+def test_a_persona_without_a_verdict_does_not_pass():
+    """判定の呼び出しが失敗した候補を、黙って通過させない。"""
+    verdict = judge({"u1": {}})
+    assert verdict.passed == set()
+    assert verdict.tested == {"u1"}
 
 
 # --------------------------------------------------------------------------- #
@@ -146,69 +67,35 @@ def test_judge_separates_passed_and_failed():
 # --------------------------------------------------------------------------- #
 
 
-def test_ask_premise_uses_the_chosen_option_verbatim():
-    """本人が選んだ選択肢をそのまま載せる。言い換えると答えていない内容が混ざる。"""
-    premise = ask_premise(_screener(), {"sc1": [3], "sc2": [1]})
+def test_premise_uses_the_survey_definition_wording_verbatim():
+    """条件文を言い換えない。言い換えると判定に使った文と食い違う。"""
+    premise = infer_premise(_screener())
     assert premise is not None
-    assert premise.heading == PromptHeadings().ask_premise
-    assert premise.lines == ("ビールの飲用頻度: 月2〜3回", "自分で酒類を購入しますか。: する")
+    assert premise.heading == PromptHeadings().infer_premise
+    assert premise.lines == tuple(CONDITIONS)
 
 
-def test_ask_premise_falls_back_to_question_text_without_label():
-    premise = ask_premise(_screener(), {"sc2": [1]})
-    assert premise is not None
-    assert premise.lines == ("自分で酒類を購入しますか。: する",)
-
-
-def test_ask_premise_is_none_without_answers():
-    assert ask_premise(_screener(), {}) is None
-
-
-def test_assume_premise_uses_survey_definition_wording():
-    premise = assume_premise(_screener(mode="assume"))
-    assert premise is not None
-    assert premise.heading == PromptHeadings().assume_premise
-    assert premise.lines == ("ビールを月1回以上飲む", "自分で酒類を購入する")
+def test_the_premise_heading_marks_where_the_condition_came_from():
+    """本人が答えたのでも全員に一律で与えたのでもない、という由来を見出しに残す。"""
+    headings = PromptHeadings()
+    assert infer_premise(_screener()).heading == headings.infer_premise
+    assert headings.infer_premise != headings.ask_premise
 
 
 def test_premise_block_is_appended_to_persona_card():
     persona = {"sex": "男", "age": 34, "prefecture": "東京都", "persona": "会社員。"}
-    premise = assume_premise(_screener(mode="assume"))
-    card = persona_card(persona, PersonaCardConfig(), premise)
+    card = persona_card(persona, PersonaCardConfig(), infer_premise(_screener()))
 
-    assert f"【{PromptHeadings().assume_premise}】" in card
+    assert f"【{PromptHeadings().infer_premise}】" in card
     assert "- ビールを月1回以上飲む" in card
     # プロフィールの後ろに来ること
-    assert card.index("会社員。") < card.index(PromptHeadings().assume_premise)
+    assert card.index("会社員。") < card.index(PromptHeadings().infer_premise)
 
 
 def test_persona_card_has_no_premise_block_without_screener():
     persona = {"sex": "男", "age": 34, "persona": "会社員。"}
     card = persona_card(persona, PersonaCardConfig())
-    assert PromptHeadings().ask_premise not in card
-    assert PromptHeadings().assume_premise not in card
-
-
-# --------------------------------------------------------------------------- #
-# セッション組み立て
-# --------------------------------------------------------------------------- #
-
-
-def test_screener_questions_are_never_shuffled():
-    """スクリーナーは頻度尺度が大半で、順序を崩す意味が無い。"""
-    question = to_question(_screener().questions[0])
-    assert question.randomize_options is False
-    assert question.options == tuple(BEER["options"])
-
-
-def test_sessions_have_no_stimulus():
-    """スクリーナーはコンセプトを見せない。"""
-    sessions = build_screener_sessions(_screener(), ["u1", "u2"])
-    assert len(sessions) == 4  # 2人 × 2設問
-    for session in sessions:
-        assert len(session.units) == 1
-        assert session.units[0].stimulus_id == NO_STIMULUS
-        assert session.units[0].stimuli_to_present == ()
+    assert PromptHeadings().infer_premise not in card
 
 
 # --------------------------------------------------------------------------- #
@@ -235,21 +122,13 @@ def test_incidence_is_empty_without_judged_rows():
     assert incidence_from_panels([{"cell_id": "A", "role": "candidate"}]) == {}
 
 
-@pytest.mark.parametrize("mode", ["ask", "assume"])
-def test_screener_session_count_is_the_ask_cost(mode):
-    """`assume` でも「ask ならいくらか」を出せる必要がある（方式選択の材料）。"""
-    survey = _survey(mode=mode, oversample_factor=3)
-    assert survey.screening.mode is ScreenerMode(mode)
-    assert screener_session_count(survey) == survey.panel.size * 3 * 2
-
-
 # --------------------------------------------------------------------------- #
 # 判定設定の指紋（再利用の可否）
 # --------------------------------------------------------------------------- #
 
 
 def _infer_survey(**overrides):
-    return _survey(mode="infer", **overrides)
+    return _survey(**overrides)
 
 
 def test_fingerprint_is_stable_for_the_same_definition():
@@ -289,15 +168,6 @@ def test_fingerprint_ignores_oversample_factor():
     """
     base = screening_fingerprint(_infer_survey(oversample_factor=4))
     assert screening_fingerprint(_infer_survey(oversample_factor=32)) == base
-
-
-def test_fingerprint_covers_ask_as_well():
-    """`ask` も設問文を変えれば別の回答になる。指紋は方式によらず持つ。"""
-    base = screening_fingerprint(_survey(mode="ask"))
-    changed = _survey(mode="ask")
-    assert base != ""
-    assert screening_fingerprint(_survey(mode="ask", logic="any")) != base
-    assert screening_fingerprint(changed) == base
 
 
 # --------------------------------------------------------------------------- #
@@ -370,39 +240,27 @@ def test_cells_without_judgement_are_left_alone():
 # --------------------------------------------------------------------------- #
 
 
-def _config(mode: ScreenerMode, **overrides) -> ScreeningConfig:
-    base: dict = {"mode": mode}
-    if mode is ScreenerMode.ASK:
-        base["questions"] = ()
-    else:
-        base["conditions"] = ("週1回以上飲む",)
+def _config(**overrides) -> ScreeningConfig:
+    base: dict = {"conditions": ("週1回以上飲む",)}
     base.update(overrides)
     return ScreeningConfig(**base)
 
 
-def test_ask_counts_skipped_sessions_per_question():
-    """`ask` は1設問＝1セッション。人数 × 設問数で数える。"""
-    screener = _config(ScreenerMode.ASK)
-    assert skipped_session_count(screener, 30, ("q1", "q2")) == 60
+def test_skipped_sessions_are_counted_in_batches():
+    """1バッチ＝1呼び出し。人数のままだと `sessions_total` と単位が違う。
 
-
-def test_infer_counts_skipped_sessions_in_batches():
-    """`infer` は1バッチ＝1呼び出し。人数のままだと `sessions_total` と単位が違う。
-
-    これが揃っていないと、CLI が両方を「バッチ」というラベルで並べるため
+    これが揃っていないと、両方を「バッチ」というラベルで並べたときに
     「1バッチ中 380 スキップ」のように内訳が総数を超えて見える。
     """
-    screener = _config(ScreenerMode.INFER, batch_size=10)
     # 判定済み120人 = 12バッチぶん。120 と数えてはいけない。
-    assert skipped_session_count(screener, 120, ("_infer",)) == 12
+    assert skipped_session_count(_config(batch_size=10), 120) == 12
 
 
-def test_infer_rounds_a_partial_batch_up():
-    screener = _config(ScreenerMode.INFER, batch_size=10)
-    assert skipped_session_count(screener, 1, ("_infer",)) == 1
-    assert skipped_session_count(screener, 11, ("_infer",)) == 2
+def test_a_partial_batch_rounds_up():
+    screener = _config(batch_size=10)
+    assert skipped_session_count(screener, 1) == 1
+    assert skipped_session_count(screener, 11) == 2
 
 
 def test_nothing_skipped_counts_as_zero():
-    for mode in (ScreenerMode.ASK, ScreenerMode.INFER):
-        assert skipped_session_count(_config(mode), 0, ("q1",)) == 0
+    assert skipped_session_count(_config(), 0) == 0

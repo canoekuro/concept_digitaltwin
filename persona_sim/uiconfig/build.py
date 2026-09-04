@@ -174,26 +174,17 @@ def build_screening(ui: UIConfig, condition: str) -> dict[str, Any] | None:
 
     defaults = ui.screening
     screening: dict[str, Any] = {}
-    # `infer` 以外では判定の LLM を呼ばないので、モデル・プロンプト・カードは書かない。
-    # 使われない設定が調査定義に残ると「設定したつもり」の記録になる。
-    if defaults.mode == "infer":
-        for key, value in (
-            ("model", defaults.model),
-            ("prompt", defaults.prompt),
-            ("persona_card", defaults.persona_card),
-        ):
-            if value:
-                screening[key] = dict(value)
+    for key, value in (
+        ("model", defaults.model),
+        ("prompt", defaults.prompt),
+        ("persona_card", defaults.persona_card),
+    ):
+        if value:
+            screening[key] = dict(value)
 
-    screening["mode"] = defaults.mode
     screening["conditions"] = [text]
-    if defaults.mode != "infer":
-        # `infer` の判定指示は screening.prompt.rule に一本化されており、logic は効かない。
-        # 書くと調査定義の読み込みで停止する（`UNUSED_INFER_SCREENER_KEYS`）。
-        screening["logic"] = defaults.logic
-    if defaults.mode != "assume":
-        screening["oversample_factor"] = defaults.oversample_factor
-    if defaults.mode == "infer" and defaults.batch_size is not None:
+    screening["oversample_factor"] = defaults.oversample_factor
+    if defaults.batch_size is not None:
         screening["batch_size"] = defaults.batch_size
     return screening
 

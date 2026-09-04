@@ -117,16 +117,14 @@ class AllocationPattern:
 class ScreeningDefaults:
     """スクリーニングの既定（`survey_defaults.screening`、§4.2）。
 
-    UI は自然言語の条件文を1つ受け取るだけなので、方式・オーバーサンプル倍率・
-    判定設定はここで固定する。
+    UI は自然言語の条件文を1つ受け取るだけなので、オーバーサンプル倍率と判定設定は
+    ここで固定する。
 
     `model` / `prompt` / `persona_card` は解釈せずそのまま調査定義へ渡す
     （`UIConfig` の説明を参照）。
     """
 
-    mode: str = "infer"
     oversample_factor: int = 4
-    logic: str = "all"
     batch_size: int | None = None
     model: Mapping[str, Any] = field(default_factory=dict)
     prompt: Mapping[str, Any] = field(default_factory=dict)

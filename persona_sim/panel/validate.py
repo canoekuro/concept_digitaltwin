@@ -26,7 +26,6 @@ from persona_sim.panel.schema import (
     QuestionType,
     QuotaMode,
     RememberMode,
-    ScreenerMode,
     StructuredOutput,
     SurveyDefinition,
 )
@@ -68,13 +67,8 @@ class Estimate:
     measures: int
     sessions: int
     effective_n_per_stimulus: int
-    #: 選んだ方式での呼び出し回数（`assume` は0）。
+    #: スクリーニングの判定呼び出し回数。`screening:` が無ければ0。
     screener_sessions: int = 0
-    #: `ask` にしたときのセッション数。方式を選ぶための比較材料。
-    screener_sessions_if_ask: int = 0
-    #: `infer` にしたときの判定呼び出し回数。同上。
-    screener_sessions_if_infer: int = 0
-    screener_method: str | None = None
 
     @property
     def answers(self) -> int:
@@ -92,18 +86,8 @@ class Estimate:
             f"1人あたり評価数   : {self.stimuli_per_persona}",
             f"設問数            : {self.questions}（別々の問い {self.measures} 種）",
         ]
-        if self.screener_method is not None:
-            # 選ばなかった側も見せる。費用とのバーターで方式を選ぶ判断材料になる。
-            others = [
-                f"{name} なら {count:,}"
-                for name, count in (
-                    ("ask", self.screener_sessions_if_ask),
-                    ("infer", self.screener_sessions_if_infer),
-                )
-                if name != self.screener_method
-            ]
-            comparison = f"（{self.screener_method}）／ " + " ・ ".join(others)
-            lines.append(f"スクリーニング    : {self.screener_sessions:,} 回{comparison}")
+        if self.screener_sessions:
+            lines.append(f"スクリーニング    : {self.screener_sessions:,} 回")
         lines.extend(
             [
                 f"本調査            : {self.sessions:,} セッション",
@@ -154,18 +138,11 @@ def validate_static(survey: SurveyDefinition) -> ValidationReport:
 
 def estimate(survey: SurveyDefinition) -> Estimate:
     """セッション数と有効サンプル数の見積もり（§10.1）。"""
-    from persona_sim.panel.screening import infer_call_count, screener_session_count
+    from persona_sim.panel.screening import infer_call_count
 
     k = survey.stimuli_count
     m = survey.stimuli_per_persona
     size = survey.panel.size
-    screener = survey.screening
-
-    if_ask = screener_session_count(survey)
-    if_infer = infer_call_count(survey)
-    chosen = 0
-    if screener is not None:
-        chosen = if_ask if screener.asks else if_infer if screener.infers else 0
     return Estimate(
         panel_size=size,
         stimuli_total=k,
@@ -177,10 +154,7 @@ def estimate(survey: SurveyDefinition) -> Estimate:
         # 記憶を持たせた調査でコスト見積が実際の呼び出し回数とずれる。
         sessions=size * len(session_groups(survey)),
         effective_n_per_stimulus=size * m // k,
-        screener_sessions=chosen,
-        screener_sessions_if_ask=if_ask,
-        screener_sessions_if_infer=if_infer,
-        screener_method=str(screener.mode) if screener else None,
+        screener_sessions=infer_call_count(survey),
     )
 
 
@@ -516,54 +490,16 @@ def _check_unimplemented(survey: SurveyDefinition, report: ValidationReport) -> 
 
 def _check_screener(survey: SurveyDefinition, report: ValidationReport) -> None:
     """スクリーナー定義の検証（§4.2）。"""
-    from persona_sim.panel.screening import unsupported_question_types
-
     screener = survey.screening
     if screener is None:
         return
 
-    if screener.asks:
-        _check_screener_questions(screener, unsupported_question_types(screener), report)
-    else:
-        _check_screener_conditions(screener, report)
+    _check_screener_conditions(screener, report)
 
     if screener.oversample_factor < 1:
-        report.error("SURVEY", "panel.screener.oversample_factor は1以上")
+        report.error("SURVEY", "screening.oversample_factor は1以上")
 
-    raw_keys = _raw_screener_keys(survey)
-    if screener.mode is ScreenerMode.ASSUME and "oversample_factor" in raw_keys:
-        report.warn(
-            "W_SCREENER_OVERSAMPLE",
-            "screener.mode: assume では oversample_factor は使われない"
-            "（聞かないのでオーバーサンプルする必要がない）",
-        )
-
-    _check_infer(survey, screener, raw_keys, report)
-
-
-def _check_screener_questions(screener, unsupported, report: ValidationReport) -> None:
-    """`mode: ask` のスクリーナー設問。実際に選択肢を見せて答えさせる（§4.2）。"""
-    _check_unique_ids([q.id for q in screener.questions], "panel.screener.questions", report)
-
-    if unsupported:
-        report.error(
-            "SURVEY",
-            f"panel.screener.questions[{', '.join(unsupported)}]: 通過判定に使えるのは "
-            "single / multi のみ。自由回答や数値では機械的に判定できない",
-        )
-
-    for question in screener.questions:
-        path = f"panel.screener.questions[{question.id}]"
-        if len(question.options) < 2:
-            report.error("SURVEY", f"{path}: 選択肢が2つ以上必要")
-        if not question.pass_if:
-            report.error("SURVEY", f"{path}: pass_if が空。通過条件が無いと全員が非通過になる")
-        out_of_range = [i for i in question.pass_if if not 1 <= i <= len(question.options)]
-        if out_of_range:
-            report.error(
-                "SURVEY",
-                f"{path}: pass_if {out_of_range} が選択肢の範囲（1〜{len(question.options)}）外",
-            )
+    _check_infer(survey, screener, report)
 
 
 def _check_screener_conditions(screener, report: ValidationReport) -> None:
@@ -571,7 +507,7 @@ def _check_screener_conditions(screener, report: ValidationReport) -> None:
     if not screener.conditions:
         report.error(
             "SURVEY",
-            f"panel.screener.conditions が空。screener.mode が {screener.mode} なので、"
+            "screening.conditions が空。"
             "対象者条件が無いと誰にも何も付与できない",
         )
     for index, condition in enumerate(screener.conditions):
@@ -579,19 +515,8 @@ def _check_screener_conditions(screener, report: ValidationReport) -> None:
             report.error("SURVEY", f"panel.screener.conditions[{index}] が空文字")
 
 
-def _check_infer(
-    survey: SurveyDefinition, screener, raw_keys: set[str], report: ValidationReport
-) -> None:
-    """`mode: infer` の判定設定（§4.2）。"""
-
-    if not screener.infers:
-        if "infer" in raw_keys:
-            report.warn(
-                "W_SCREENER_INFER_UNUSED",
-                f"screener.mode が {screener.mode} なので infer の設定は使われない",
-            )
-        return
-
+def _check_infer(survey: SurveyDefinition, screener, report: ValidationReport) -> None:
+    """判定設定（§4.2）。"""
     card = screener.persona_card
     if screener.batch_size < 1:
         report.error("SURVEY", "screening.batch_size は1以上")
@@ -627,12 +552,6 @@ def _check_persona_card(card, path: str, report: ValidationReport) -> None:
                 f"{path}.persona_fields: {persona_field.field!r} は "
                 f"personas_base に無い列。指定できるのは {', '.join(PERSONAS_BASE_COLUMNS)}",
             )
-
-
-def _raw_screener_keys(survey: SurveyDefinition) -> set[str]:
-    """調査定義に実際に書かれていたキー。既定値と区別するために生の内容を見る。"""
-    screening = survey.raw.get("screening") if isinstance(survey.raw, dict) else None
-    return set(screening) if isinstance(screening, dict) else set()
 
 
 def _check_prompt(survey: SurveyDefinition, report: ValidationReport) -> None:

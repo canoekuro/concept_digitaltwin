@@ -237,11 +237,8 @@ def panel_composition_table_from_rows(
 
     requested = allocate_cell_sizes(survey)
     incidence = incidence_from_panels(panel_rows)
-    screener = survey.screening
-    asks = screener is not None and screener.asks
-    infers = screener is not None and screener.infers
-    # ask は実測、infer は推定。どちらも数字は出せるが、意味が違うので注記で分ける。
-    has_rate = asks or infers
+    # 本人には聞いていないので、通過率は**推定値**。数字は出せるが実測値ではない。
+    has_rate = survey.screening is not None
 
     columns = ("cell_id", "目標", "確定", "予備", "非通過", "未判定", "通過率", "weight")
     body: list[list[object]] = []
@@ -262,15 +259,15 @@ def panel_composition_table_from_rows(
         )
 
     notes = []
-    if infers:
+    if has_rate:
         notes.append(
-            "mode: infer のため通過率は**推定値**。本人には聞いておらず、"
-            "別の判定で条件合致の蓋然性が高いとされた割合であって実測値ではない（§4.2）"
+            "通過率は**推定値**。本人には聞いておらず、別の判定で条件合致の蓋然性が"
+            "高いとされた割合であって実測値ではない（§4.2）"
         )
-    elif not asks:
+    else:
         notes.append(
-            "スクリーニングを実行していない（screener 無し、または mode: assume）ため"
-            "通過率は測定していない。1.0 ではなく未測定として扱うこと（§9）"
+            "スクリーニングを実行していない（screening: 無し）ため通過率は測定していない。"
+            "1.0 ではなく未測定として扱うこと（§9）"
         )
     return Table(
         key="panel_composition",

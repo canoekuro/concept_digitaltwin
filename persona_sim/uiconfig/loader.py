@@ -102,17 +102,15 @@ def _screening(source: Any) -> ScreeningDefaults:
     mapping = _as_mapping(source, path)
     _reject_unknown(
         mapping,
-        ("mode", "oversample_factor", "logic", "batch_size", "model", "prompt", "persona_card"),
+        ("oversample_factor", "batch_size", "model", "prompt", "persona_card"),
         path,
     )
     defaults = ScreeningDefaults()
     batch_size = mapping.get("batch_size")
     return ScreeningDefaults(
-        mode=_as_str(mapping.get("mode", defaults.mode), f"{path}.mode"),
         oversample_factor=_as_int(
             mapping.get("oversample_factor", defaults.oversample_factor), f"{path}.oversample_factor"
         ),
-        logic=_as_str(mapping.get("logic", defaults.logic), f"{path}.logic"),
         batch_size=None if batch_size is None else _as_int(batch_size, f"{path}.batch_size"),
         model=_as_mapping(mapping.get("model"), f"{path}.model"),
         prompt=_as_mapping(mapping.get("prompt"), f"{path}.prompt"),

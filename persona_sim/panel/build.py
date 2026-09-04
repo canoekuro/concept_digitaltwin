@@ -59,7 +59,7 @@ def candidate_sizes(survey: SurveyDefinition) -> dict[str, int]:
     `assume` は全員に条件を与えるので必要な人数ちょうどでよい。
     """
     screener = survey.screening
-    factor = screener.oversample_factor if screener and screener.calls_llm else 1
+    factor = screener.oversample_factor if screener else 1
     return {cell_id: size * factor for cell_id, size in allocate_cell_sizes(survey).items()}
 
 
@@ -101,7 +101,7 @@ def build_panel(
     personas = delta.read_table(spark, personas_locator)
 
     screener = survey.screening
-    screening = screener is not None and screener.calls_llm
+    screening = screener is not None
 
     sizes = candidate_sizes(survey)
     if screening and oversample_factor is not None:

@@ -19,11 +19,9 @@ import yaml
 from persona_sim.errors import SurveyDefinitionError
 from persona_sim.panel.schema import (
     DEFAULT_REASONING_MAX_LENGTH,
-    MISPLACED_SCREENER_KEYS,
     NO_MEMORY,
     REMOVED_MODEL_FIELDS,
     UNSUPPORTED_QUESTION_TYPES,
-    UNUSED_INFER_SCREENER_KEYS,
     Endpoint,
     ImageMode,
     InferModelOverrides,
@@ -45,9 +43,6 @@ from persona_sim.panel.schema import (
     ReasoningRules,
     Remember,
     RememberMode,
-    ScreenerLogic,
-    ScreenerMode,
-    ScreenerQuestion,
     ScreeningConfig,
     ScreeningPromptConfig,
     Stimulus,
@@ -202,16 +197,14 @@ def survey_from_record(record: Mapping[str, Any]) -> SurveyDefinition:
 def _record_screening(source: Any, path: str) -> ScreeningConfig | None:
     """記録に残ったスクリーニングから**方式だけ**読む（`survey_from_record()`）。
 
-    通過率の注記（`aggregate.panel_composition_table_from_rows`）が方式を見る。実測
-    （`ask`）か推定（`infer`）か未測定（`assume`）かで数字の意味が変わるため、ここは
-    復元する。条件文・判定プロンプト・判定モデルは聞き方なので読まない。
+    **スクリーニングを実施したかどうか**だけを復元する。通過率の注記
+    （`aggregate.panel_composition_table_from_rows`）が、それを実施済みとして扱うため。
+    条件文・判定プロンプト・判定モデルは聞き方なので読まない。
     """
     if source is None:
         return None
-    mapping = _as_mapping(source, path)
-    return ScreeningConfig(
-        mode=_enum(ScreenerMode, mapping.get("mode", ScreenerMode.ASK), f"{path}.mode")
-    )
+    _as_mapping(source, path)
+    return ScreeningConfig()
 
 
 # --------------------------------------------------------------------------- #
@@ -284,11 +277,10 @@ def _filter(source: Any, path: str, *, ignore_unknown: bool = False) -> PersonaF
 
 
 def _screening(source: Any) -> ScreeningConfig:
-    """スクリーニング定義（`screening:`）。**方式ごとに書ける形が違う**（§4.2）。
+    """スクリーニング定義（`screening:`、§4.2）。
 
-    `ask` は `questions`、`assume` / `infer` は `conditions`。
-    片方に他方の書き方を混ぜたら、移し方を添えて停止する。黙って無視すると
-    「条件を書いたのに効いていない」ことに実行後まで気づけない。
+    対象者条件（`conditions`）を判定用 LLM に見せる方式だけを受ける。選択肢を提示して
+    本人に答えさせないので、`options` や `pass_if` を書く場所は無い。
     """
     path = "screening"
     mapping = _as_mapping(source, path)
@@ -298,39 +290,16 @@ def _screening(source: Any) -> ScreeningConfig:
             "model",
             "prompt",
             "persona_card",
-            "mode",
-            "questions",
             "conditions",
-            "logic",
             "oversample_factor",
             "batch_size",
         ),
         path,
     )
-    mode = _enum(ScreenerMode, mapping.get("mode", ScreenerMode.ASK), f"{path}.mode")
-
-    misplaced = "conditions" if mode is ScreenerMode.ASK else "questions"
-    if mapping.get(misplaced) is not None:
-        raise SurveyDefinitionError(f"{path}: {MISPLACED_SCREENER_KEYS[misplaced]}")
-
-    if mode is ScreenerMode.INFER:
-        # 値ではなくキーの有無で見る。既定のままなら書いていないので通す。
-        for unused, hint in UNUSED_INFER_SCREENER_KEYS.items():
-            if unused in mapping:
-                raise SurveyDefinitionError(f"{path}.{unused}: {hint}")
-
-    if mode is ScreenerMode.ASK:
-        questions = tuple(
-            _screener_question(item, f"{path}.questions[{i}]")
-            for i, item in enumerate(_sequence(mapping, "questions", f"{path}.questions"))
-        )
-        conditions: tuple[str, ...] = ()
-    else:
-        questions = ()
-        conditions = tuple(
-            _as_str(item, f"{path}.conditions[{i}]")
-            for i, item in enumerate(_sequence(mapping, "conditions", f"{path}.conditions"))
-        )
+    conditions = tuple(
+        _as_str(item, f"{path}.conditions[{i}]")
+        for i, item in enumerate(_sequence(mapping, "conditions", f"{path}.conditions"))
+    )
 
     defaults = ScreeningConfig()
     return ScreeningConfig(
@@ -339,10 +308,7 @@ def _screening(source: Any) -> ScreeningConfig:
         persona_card=_persona_card(
             mapping.get("persona_card"), f"{path}.persona_card", defaults.persona_card
         ),
-        mode=mode,
-        questions=questions,
         conditions=conditions,
-        logic=_enum(ScreenerLogic, mapping.get("logic", ScreenerLogic.ALL), f"{path}.logic"),
         oversample_factor=_as_int(
             mapping.get("oversample_factor", defaults.oversample_factor),
             f"{path}.oversample_factor",
@@ -447,23 +413,6 @@ def _infer_model(source: Any, path: str) -> InferModelOverrides:
             if mapping.get("structured_output") is not None
             else None
         ),
-    )
-
-
-def _screener_question(item: Any, path: str) -> ScreenerQuestion:
-    mapping = _as_mapping(item, path)
-    _reject_unknown(mapping, ("id", "text", "type", "options", "pass_if", "label", "premise"), path)
-    return ScreenerQuestion(
-        id=_str(mapping, "id", f"{path}.id"),
-        text=_str(mapping, "text", f"{path}.text"),
-        type=_question_type(mapping.get("type", QuestionType.SINGLE), f"{path}.type"),
-        options=_opt_str_tuple(mapping.get("options"), f"{path}.options") or (),
-        pass_if=tuple(
-            _as_int(v, f"{path}.pass_if[{i}]")
-            for i, v in enumerate(_as_sequence(mapping.get("pass_if") or [], f"{path}.pass_if"))
-        ),
-        label=_opt_str(mapping.get("label"), f"{path}.label"),
-        premise=_opt_str(mapping.get("premise"), f"{path}.premise"),
     )
 
 

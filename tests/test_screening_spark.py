@@ -39,17 +39,7 @@ pytestmark = pytest.mark.spark
 CELL_SIZE = 30
 PERSONA_COUNT = 1200
 
-SCREENER_QUESTION = {
-    "id": "sc1",
-    "text": "ビールをどのくらいの頻度で飲みますか。",
-    "label": "ビールの飲用頻度",
-    "type": "single",
-    "options": ["月1回以上", "それ以下・飲まない"],
-    "pass_if": [1],
-    "premise": "ビールを月1回以上飲む",
-}
-
-#: `assume` / `infer` はこちら。選択肢を提示しないので自然言語で書く（§4.2）。
+#: 対象者条件。選択肢を提示しないので自然言語で書く（§4.2）。
 SCREENER_CONDITIONS = ["ビールを月1回以上飲む"]
 
 
@@ -78,21 +68,19 @@ def personas_frame(spark):
     return spark.createDataFrame(rows, PERSONA_SCHEMA).cache()
 
 
-def _survey_dict(*, mode="ask", oversample_factor=4, concepts=3, questions=None):
+def _survey_dict(*, oversample_factor=4, concepts=3, screening=True):
     # 全ペルソナが全コンセプトを評価するので、設問はコンセプト数だけ slot 展開する。
     data = base_survey_dict(slots=concepts)
-    data["survey"]["id"] = f"screen_{mode}_{concepts}"
+    data["survey"]["id"] = f"screen_{'on' if screening else 'off'}_{concepts}"
     data["panel"]["size"] = CELL_SIZE
     data["panel"]["quotas"]["cells"] = [
         {"cell_id": "M_20_40s", "sex": "男", "age_min": 20, "age_max": 49, "n": CELL_SIZE}
     ]
-    if mode == "ask":
-        screener: dict = {"mode": mode, "questions": questions or [SCREENER_QUESTION]}
-    else:
-        screener = {"mode": mode, "conditions": list(SCREENER_CONDITIONS)}
-    if mode in ("ask", "infer"):
-        screener["oversample_factor"] = oversample_factor
-    data["screening"] = screener
+    if screening:
+        data["screening"] = {
+            "conditions": list(SCREENER_CONDITIONS),
+            "oversample_factor": oversample_factor,
+        }
     data["main_survey"]["model"]["concurrency"] = 8
     return data
 
@@ -116,282 +104,6 @@ def _panel_rows(spark, storage, survey):
 
 def _roles(rows) -> Counter:
     return Counter(row["role"] for row in rows)
-
-
-# --------------------------------------------------------------------------- #
-# ask
-# --------------------------------------------------------------------------- #
-
-
-def test_panel_writes_candidates_when_screening(spark, personas_frame, tmp_path):
-    """判定前は candidate。誰が通過するかは screen まで分からない。"""
-    survey = survey_from_dict(_survey_dict(oversample_factor=4))
-    storage = _prepare(spark, personas_frame, tmp_path, survey)
-
-    rows = _panel_rows(spark, storage, survey)
-    assert _roles(rows) == {ROLE_CANDIDATE: CELL_SIZE * 4}
-    assert all(row["assigned_stimuli"] == [] for row in rows)
-
-
-def test_incidence_is_recorded(spark, personas_frame, tmp_path):
-    """M4 の完了条件。"""
-    survey = survey_from_dict(_survey_dict())
-    storage = _prepare(spark, personas_frame, tmp_path, survey)
-
-    result = screen_survey(spark, survey, storage, client=FakeClient())
-
-    assert result.method == "ask"
-    assert result.achieved["M_20_40s"] == CELL_SIZE
-    assert 0.0 < result.incidence["total"] < 1.0
-    assert 0.0 < result.incidence["M_20_40s"] < 1.0
-
-
-def test_roles_after_screening(spark, personas_frame, tmp_path):
-    """確定・予備・非通過に分かれ、非通過の行が消えていないこと（§4.2）。"""
-    survey = survey_from_dict(_survey_dict())
-    storage = _prepare(spark, personas_frame, tmp_path, survey)
-    screen_survey(spark, survey, storage, client=FakeClient())
-
-    rows = _panel_rows(spark, storage, survey)
-    roles = _roles(rows)
-
-    assert roles[ROLE_MAIN] == CELL_SIZE
-    assert roles[ROLE_SCREENED_OUT] > 0, "非通過が1件も無い（判定が効いていない）"
-    assert roles[ROLE_CANDIDATE] == 0
-    assert sum(roles.values()) == CELL_SIZE * 4
-    # 通過者の総数 = main + reserve
-    assert roles[ROLE_MAIN] + roles[ROLE_RESERVE] + roles[ROLE_SCREENED_OUT] == CELL_SIZE * 4
-
-
-def test_screened_out_rows_have_no_assignment(spark, personas_frame, tmp_path):
-    survey = survey_from_dict(_survey_dict())
-    storage = _prepare(spark, personas_frame, tmp_path, survey)
-    screen_survey(spark, survey, storage, client=FakeClient())
-
-    for row in _panel_rows(spark, storage, survey):
-        if row["role"] != ROLE_MAIN:
-            assert row["assigned_stimuli"] == []
-            assert row["cell_rank"] is None
-
-
-def test_cell_rank_is_renumbered_after_screening(spark, personas_frame, tmp_path):
-    """確定後に順位を振り直す（§4.2 手順6）。
-
-    候補の順位のまま残すと、非通過で空いた穴がそのまま `cell_rank` の飛びになり、
-    「セル内の何番目に選ばれた人か」がパネルの記録から読めなくなる。
-    """
-    survey = survey_from_dict(_survey_dict())
-    storage = _prepare(spark, personas_frame, tmp_path, survey)
-    screen_survey(spark, survey, storage, client=FakeClient())
-
-    main_rows = [row for row in _panel_rows(spark, storage, survey) if row["role"] == ROLE_MAIN]
-    assert sorted(row["cell_rank"] for row in main_rows) == list(range(CELL_SIZE))
-    # 全員が全コンセプトを評価する（§5）。
-    assert all(list(row["assigned_stimuli"]) == ["c1", "c2", "c3"] for row in main_rows)
-
-
-def test_rerun_does_not_ask_again(spark, personas_frame, tmp_path):
-    """判定済みの候補に聞き直さない（`screener_responses` が冪等）。"""
-    survey = survey_from_dict(_survey_dict())
-    storage = _prepare(spark, personas_frame, tmp_path, survey)
-
-    first = screen_survey(spark, survey, storage, client=FakeClient())
-    before = delta.read_table(spark, locator(SCREENER_RESPONSES, storage)).count()
-
-    client = FakeClient()
-    second = screen_survey(spark, survey, storage, client=client)
-
-    assert client.calls == 0, "判定済みなのに聞き直している"
-    assert second.sessions_total == 0
-    assert delta.read_table(spark, locator(SCREENER_RESPONSES, storage)).count() == before
-    assert second.achieved == first.achieved
-
-
-def test_tokens_count_only_this_run(spark, personas_frame, tmp_path):
-    """スクリーナーのトークンは**この実行で呼び出したぶんだけ**（docs/issues/20260805003.md）。
-
-    再実行では1件も聞き直さないので 0 になる。ここで過去の実行ぶんまで足すと、
-    ノートブックの表示が「今回いくら使ったか」を答えなくなる。
-    """
-    survey = survey_from_dict(_survey_dict())
-    storage = _prepare(spark, personas_frame, tmp_path, survey)
-
-    first = screen_survey(spark, survey, storage, client=FakeClient())
-    assert first.input_tokens > 0
-    assert first.output_tokens > 0
-
-    second = screen_survey(spark, survey, storage, client=FakeClient())
-    assert second.input_tokens == 0
-    assert second.output_tokens == 0
-
-
-def test_assume_spends_no_tokens(spark, personas_frame, tmp_path):
-    """聞かない方式では 0。表示上も費用が発生していないことが分かるように。"""
-    survey = survey_from_dict(_survey_dict(mode="assume"))
-    storage = _prepare(spark, personas_frame, tmp_path, survey)
-
-    result = screen_survey(spark, survey, storage, client=FakeClient())
-
-    assert result.input_tokens == 0
-    assert result.output_tokens == 0
-
-
-def test_screener_answers_do_not_leak_into_responses(spark, personas_frame, tmp_path):
-    """スクリーナーの回答が本調査の生データに混ざらないこと（§2.6）。"""
-    survey = survey_from_dict(_survey_dict())
-    storage = _prepare(spark, personas_frame, tmp_path, survey)
-    screen_survey(spark, survey, storage, client=FakeClient())
-    run_survey(spark, survey, storage, client=FakeClient())
-
-    from pyspark.sql import functions as F
-
-    responses = delta.read_table(spark, locator(RESPONSES, storage)).filter(
-        F.col("survey_id") == F.lit(survey.survey_id)
-    )
-    question_ids = {row["question_id"] for row in responses.select("question_id").collect()}
-    assert "sc1" not in question_ids
-    # 設問は slot ごとに展開されるので、本調査の設問IDは 3 slot × 2問。
-    assert question_ids == {q.id for q in survey.questions}
-
-
-def test_run_surveys_only_confirmed_members(spark, personas_frame, tmp_path):
-    """非通過者にまで本調査を実行しないこと。"""
-    survey = survey_from_dict(_survey_dict())
-    storage = _prepare(spark, personas_frame, tmp_path, survey)
-    screen_survey(spark, survey, storage, client=FakeClient())
-    run_survey(spark, survey, storage, client=FakeClient())
-
-    from pyspark.sql import functions as F
-
-    main_uuids = {
-        row["persona_uuid"] for row in _panel_rows(spark, storage, survey) if row["role"] == ROLE_MAIN
-    }
-    surveyed = {
-        row["persona_uuid"]
-        for row in delta.read_table(spark, locator(RESPONSES, storage))
-        .filter(F.col("survey_id") == F.lit(survey.survey_id))
-        .select("persona_uuid")
-        .collect()
-    }
-    assert surveyed == main_uuids
-
-
-def test_ask_premise_reaches_the_survey_prompt(spark, personas_frame, tmp_path):
-    """本人の回答がペルソナカードに載って本調査まで届くこと（§6.1）。"""
-    from persona_sim.panel.schema import PromptHeadings
-    from persona_sim.panel.screening import load_premises
-
-    survey = survey_from_dict(_survey_dict())
-    storage = _prepare(spark, personas_frame, tmp_path, survey)
-    screen_survey(spark, survey, storage, client=FakeClient())
-
-    main_uuids = [
-        row["persona_uuid"] for row in _panel_rows(spark, storage, survey) if row["role"] == ROLE_MAIN
-    ]
-    premises = load_premises(spark, survey, storage, main_uuids)
-
-    assert len(premises) == len(main_uuids)
-    for premise in premises.values():
-        assert premise.heading == PromptHeadings().ask_premise
-        assert premise.lines[0].startswith("ビールの飲用頻度: ")
-        # 通過者なので、選んだのは pass_if の選択肢
-        assert premise.lines[0].endswith("月1回以上")
-
-
-def test_shortfall_raises_e2_with_incidence(spark, personas_frame, tmp_path):
-    """誰も通過しなければ、倍化を繰り返したうえで実インシデンスつきで止まる。"""
-    survey = survey_from_dict(_survey_dict(oversample_factor=2))
-    storage = _prepare(spark, personas_frame, tmp_path, survey)
-
-    with pytest.raises(ScreenerShortfallError) as excinfo:
-        screen_survey(spark, survey, storage, client=FakeClient(unparseable_rate=1.0))
-
-    message = str(excinfo.value)
-    assert "M_20_40s" in message
-    assert "実インシデンス" in message
-    # 母集団を使い切った場合も、E1（候補不足）ではなく E2 として実インシデンスを示す
-    assert "通過者が必要数に満たない" in message
-
-
-# --------------------------------------------------------------------------- #
-# assume
-# --------------------------------------------------------------------------- #
-
-
-def test_assume_panel_is_final_without_screening(spark, personas_frame, tmp_path):
-    """聞かないので候補も非通過も現れない。"""
-    survey = survey_from_dict(_survey_dict(mode="assume"))
-    storage = _prepare(spark, personas_frame, tmp_path, survey)
-
-    assert _roles(_panel_rows(spark, storage, survey)) == {ROLE_MAIN: CELL_SIZE}
-
-
-def test_assume_calls_no_llm(spark, personas_frame, tmp_path):
-    """`assume` の利点は費用が0であること。1回でも呼んでいたら意味が無い。"""
-    survey = survey_from_dict(_survey_dict(mode="assume"))
-    storage = _prepare(spark, personas_frame, tmp_path, survey)
-
-    client = FakeClient()
-    result = screen_survey(spark, survey, storage, client=client)
-
-    assert client.calls == 0
-    assert result.executed is False
-    assert result.sessions_total == 0
-    assert not delta.table_exists(spark, locator(SCREENER_RESPONSES, storage))
-
-
-def test_assume_premise_reaches_the_survey_prompt(spark, personas_frame, tmp_path):
-    from persona_sim.panel.schema import PromptHeadings
-    from persona_sim.panel.screening import load_premises
-
-    survey = survey_from_dict(_survey_dict(mode="assume"))
-    storage = _prepare(spark, personas_frame, tmp_path, survey)
-
-    uuids = [row["persona_uuid"] for row in _panel_rows(spark, storage, survey)]
-    premises = load_premises(spark, survey, storage, uuids)
-
-    assert len(premises) == CELL_SIZE
-    for premise in premises.values():
-        assert premise.heading == PromptHeadings().assume_premise
-        assert premise.lines == ("ビールを月1回以上飲む",)
-
-
-def test_assume_records_no_incidence(spark, personas_frame, tmp_path):
-    """測っていないことと、全員該当は違う。1.0 と書いてはいけない（§9）。"""
-    from persona_sim.metadata import write_metadata
-
-    survey = survey_from_dict(_survey_dict(mode="assume"))
-    storage = _prepare(spark, personas_frame, tmp_path, survey)
-    screen_survey(spark, survey, storage, client=FakeClient())
-    result = run_survey(spark, survey, storage, client=FakeClient())
-
-    path = write_metadata(spark, survey, result, storage, str(tmp_path / "outputs"))
-    panel = json.loads(path.read_text(encoding="utf-8"))["panel"]
-
-    assert panel["screener_method"] == "assume"
-    assert panel["screener_incidence"] is None
-    assert panel["oversample_actual"] is None
-
-
-def test_ask_records_incidence_in_metadata(spark, personas_frame, tmp_path):
-    from persona_sim.metadata import write_metadata
-
-    survey = survey_from_dict(_survey_dict())
-    storage = _prepare(spark, personas_frame, tmp_path, survey)
-    screen_survey(spark, survey, storage, client=FakeClient())
-    result = run_survey(spark, survey, storage, client=FakeClient())
-
-    path = write_metadata(spark, survey, result, storage, str(tmp_path / "outputs"))
-    panel = json.loads(path.read_text(encoding="utf-8"))["panel"]
-
-    assert panel["screener_method"] == "ask"
-    assert 0.0 < panel["screener_incidence"]["total"] < 1.0
-    assert panel["oversample_actual"] == 4.0
-
-
-# --------------------------------------------------------------------------- #
-# infer（issue 202607281420 項目7）
-# --------------------------------------------------------------------------- #
 
 
 class _JudgeClient:
@@ -424,6 +136,18 @@ class _JudgeClient:
         )
 
 
+class _RejectAllJudgeClient:
+    """誰も通過させない判定クライアント（通過者ゼロの再現）。"""
+
+    def describe(self) -> str:
+        return "judge-reject-all"
+
+    def complete(self, messages, **kwargs):
+        from persona_sim.llm.client import Completion
+
+        return Completion(text="", latency_ms=1, input_tokens=1, output_tokens=1)
+
+
 class _FailingJudgeClient:
     """判定の呼び出しが必ず失敗するクライアント（エンドポイント障害の再現）。"""
 
@@ -440,9 +164,263 @@ class _FailingJudgeClient:
         raise LLMError("判定エンドポイントに届かない")
 
 
+# --------------------------------------------------------------------------- #
+# スクリーニングの基本挙動（§4.2）
+# --------------------------------------------------------------------------- #
+
+
+def test_panel_writes_candidates_when_screening(spark, personas_frame, tmp_path):
+    """判定前は candidate。誰が通過するかは screen まで分からない。"""
+    survey = survey_from_dict(_survey_dict(oversample_factor=4))
+    storage = _prepare(spark, personas_frame, tmp_path, survey)
+
+    rows = _panel_rows(spark, storage, survey)
+    assert _roles(rows) == {ROLE_CANDIDATE: CELL_SIZE * 4}
+    assert all(row["assigned_stimuli"] == [] for row in rows)
+
+
+def test_incidence_is_recorded(spark, personas_frame, tmp_path):
+    """M4 の完了条件。"""
+    survey = survey_from_dict(_survey_dict())
+    storage = _prepare(spark, personas_frame, tmp_path, survey)
+
+    result = screen_survey(spark, survey, storage, client=_JudgeClient())
+
+    assert result.method == "infer"
+    assert result.achieved["M_20_40s"] == CELL_SIZE
+    assert 0.0 < result.incidence["total"] < 1.0
+    assert 0.0 < result.incidence["M_20_40s"] < 1.0
+
+
+def test_roles_after_screening(spark, personas_frame, tmp_path):
+    """確定・予備・非通過に分かれ、非通過の行が消えていないこと（§4.2）。"""
+    survey = survey_from_dict(_survey_dict())
+    storage = _prepare(spark, personas_frame, tmp_path, survey)
+    screen_survey(spark, survey, storage, client=_JudgeClient())
+
+    rows = _panel_rows(spark, storage, survey)
+    roles = _roles(rows)
+
+    assert roles[ROLE_MAIN] == CELL_SIZE
+    assert roles[ROLE_SCREENED_OUT] > 0, "非通過が1件も無い（判定が効いていない）"
+    assert roles[ROLE_CANDIDATE] == 0
+    assert sum(roles.values()) == CELL_SIZE * 4
+    # 通過者の総数 = main + reserve
+    assert roles[ROLE_MAIN] + roles[ROLE_RESERVE] + roles[ROLE_SCREENED_OUT] == CELL_SIZE * 4
+
+
+def test_screened_out_rows_have_no_assignment(spark, personas_frame, tmp_path):
+    survey = survey_from_dict(_survey_dict())
+    storage = _prepare(spark, personas_frame, tmp_path, survey)
+    screen_survey(spark, survey, storage, client=_JudgeClient())
+
+    for row in _panel_rows(spark, storage, survey):
+        if row["role"] != ROLE_MAIN:
+            assert row["assigned_stimuli"] == []
+            assert row["cell_rank"] is None
+
+
+def test_cell_rank_is_renumbered_after_screening(spark, personas_frame, tmp_path):
+    """確定後に順位を振り直す（§4.2 手順6）。
+
+    候補の順位のまま残すと、非通過で空いた穴がそのまま `cell_rank` の飛びになり、
+    「セル内の何番目に選ばれた人か」がパネルの記録から読めなくなる。
+    """
+    survey = survey_from_dict(_survey_dict())
+    storage = _prepare(spark, personas_frame, tmp_path, survey)
+    screen_survey(spark, survey, storage, client=_JudgeClient())
+
+    main_rows = [row for row in _panel_rows(spark, storage, survey) if row["role"] == ROLE_MAIN]
+    assert sorted(row["cell_rank"] for row in main_rows) == list(range(CELL_SIZE))
+    # 全員が全コンセプトを評価する（§5）。
+    assert all(list(row["assigned_stimuli"]) == ["c1", "c2", "c3"] for row in main_rows)
+
+
+def test_rerun_does_not_ask_again(spark, personas_frame, tmp_path):
+    """判定済みの候補に聞き直さない（`screener_responses` が冪等）。"""
+    survey = survey_from_dict(_survey_dict())
+    storage = _prepare(spark, personas_frame, tmp_path, survey)
+
+    first = screen_survey(spark, survey, storage, client=_JudgeClient())
+    before = delta.read_table(spark, locator(SCREENER_RESPONSES, storage)).count()
+
+    client = _JudgeClient()
+    second = screen_survey(spark, survey, storage, client=client)
+
+    assert client.calls == 0, "判定済みなのに聞き直している"
+    assert second.sessions_total == 0
+    assert delta.read_table(spark, locator(SCREENER_RESPONSES, storage)).count() == before
+    assert second.achieved == first.achieved
+
+
+def test_tokens_count_only_this_run(spark, personas_frame, tmp_path):
+    """スクリーナーのトークンは**この実行で呼び出したぶんだけ**（docs/issues/20260805003.md）。
+
+    再実行では1件も聞き直さないので 0 になる。ここで過去の実行ぶんまで足すと、
+    ノートブックの表示が「今回いくら使ったか」を答えなくなる。
+    """
+    survey = survey_from_dict(_survey_dict())
+    storage = _prepare(spark, personas_frame, tmp_path, survey)
+
+    first = screen_survey(spark, survey, storage, client=_JudgeClient())
+    assert first.input_tokens > 0
+    assert first.output_tokens > 0
+
+    second = screen_survey(spark, survey, storage, client=_JudgeClient())
+    assert second.input_tokens == 0
+    assert second.output_tokens == 0
+
+
+def test_no_screening_spends_no_tokens(spark, personas_frame, tmp_path):
+    """判定しなければ 0。表示上も費用が発生していないことが分かるように。"""
+    survey = survey_from_dict(_survey_dict(screening=False))
+    storage = _prepare(spark, personas_frame, tmp_path, survey)
+
+    result = screen_survey(spark, survey, storage, client=_JudgeClient())
+
+    assert result.input_tokens == 0
+    assert result.output_tokens == 0
+
+
+def test_screener_answers_do_not_leak_into_responses(spark, personas_frame, tmp_path):
+    """スクリーナーの回答が本調査の生データに混ざらないこと（§2.6）。"""
+    survey = survey_from_dict(_survey_dict())
+    storage = _prepare(spark, personas_frame, tmp_path, survey)
+    screen_survey(spark, survey, storage, client=_JudgeClient())
+    run_survey(spark, survey, storage, client=FakeClient())
+
+    from pyspark.sql import functions as F
+
+    responses = delta.read_table(spark, locator(RESPONSES, storage)).filter(
+        F.col("survey_id") == F.lit(survey.survey_id)
+    )
+    question_ids = {row["question_id"] for row in responses.select("question_id").collect()}
+    assert "sc1" not in question_ids
+    # 設問は slot ごとに展開されるので、本調査の設問IDは 3 slot × 2問。
+    assert question_ids == {q.id for q in survey.questions}
+
+
+def test_run_surveys_only_confirmed_members(spark, personas_frame, tmp_path):
+    """非通過者にまで本調査を実行しないこと。"""
+    survey = survey_from_dict(_survey_dict())
+    storage = _prepare(spark, personas_frame, tmp_path, survey)
+    screen_survey(spark, survey, storage, client=_JudgeClient())
+    run_survey(spark, survey, storage, client=FakeClient())
+
+    from pyspark.sql import functions as F
+
+    main_uuids = {
+        row["persona_uuid"] for row in _panel_rows(spark, storage, survey) if row["role"] == ROLE_MAIN
+    }
+    surveyed = {
+        row["persona_uuid"]
+        for row in delta.read_table(spark, locator(RESPONSES, storage))
+        .filter(F.col("survey_id") == F.lit(survey.survey_id))
+        .select("persona_uuid")
+        .collect()
+    }
+    assert surveyed == main_uuids
+
+
+def test_premise_reaches_the_survey_prompt(spark, personas_frame, tmp_path):
+    """判定で付与した条件がペルソナカードに載って本調査まで届くこと（§6.1）。"""
+    from persona_sim.panel.schema import PromptHeadings
+    from persona_sim.panel.screening import load_premises
+
+    survey = survey_from_dict(_survey_dict())
+    storage = _prepare(spark, personas_frame, tmp_path, survey)
+    screen_survey(spark, survey, storage, client=_JudgeClient())
+
+    main_uuids = [
+        row["persona_uuid"] for row in _panel_rows(spark, storage, survey) if row["role"] == ROLE_MAIN
+    ]
+    premises = load_premises(spark, survey, storage, main_uuids)
+
+    assert len(premises) == len(main_uuids)
+    for premise in premises.values():
+        assert premise.heading == PromptHeadings().infer_premise
+        # 条件文は言い換えずそのまま載る。
+        assert premise.lines == tuple(SCREENER_CONDITIONS)
+
+
+def test_shortfall_raises_e2_with_incidence(spark, personas_frame, tmp_path):
+    """誰も通過しなければ、倍化を繰り返したうえで実インシデンスつきで止まる。"""
+    survey = survey_from_dict(_survey_dict(oversample_factor=2))
+    storage = _prepare(spark, personas_frame, tmp_path, survey)
+
+    with pytest.raises(ScreenerShortfallError) as excinfo:
+        screen_survey(spark, survey, storage, client=_RejectAllJudgeClient())
+
+    message = str(excinfo.value)
+    assert "M_20_40s" in message
+    assert "実インシデンス" in message
+    # 母集団を使い切った場合も、E1（候補不足）ではなく E2 として実インシデンスを示す
+    assert "通過者が必要数に満たない" in message
+
+
+# --------------------------------------------------------------------------- #
+# スクリーニング無し
+# --------------------------------------------------------------------------- #
+
+
+def test_panel_is_final_without_screening(spark, personas_frame, tmp_path):
+    """判定しないので候補も非通過も現れない。"""
+    survey = survey_from_dict(_survey_dict(screening=False))
+    storage = _prepare(spark, personas_frame, tmp_path, survey)
+
+    assert _roles(_panel_rows(spark, storage, survey)) == {ROLE_MAIN: CELL_SIZE}
+
+
+def test_no_screening_calls_no_llm(spark, personas_frame, tmp_path):
+    """`screening:` を書かなければ判定の呼び出しは0。1回でも呼んでいたら費用が乗る。"""
+    survey = survey_from_dict(_survey_dict(screening=False))
+    storage = _prepare(spark, personas_frame, tmp_path, survey)
+
+    client = FakeClient()
+    result = screen_survey(spark, survey, storage, client=client)
+
+    assert client.calls == 0
+    assert result.executed is False
+    assert result.sessions_total == 0
+    assert not delta.table_exists(spark, locator(SCREENER_RESPONSES, storage))
+
+
+def test_no_screening_gives_no_premise(spark, personas_frame, tmp_path):
+    """条件を書いていないので、ペルソナカードに前提を付けない。"""
+    from persona_sim.panel.screening import load_premises
+
+    survey = survey_from_dict(_survey_dict(screening=False))
+    storage = _prepare(spark, personas_frame, tmp_path, survey)
+
+    uuids = [row["persona_uuid"] for row in _panel_rows(spark, storage, survey)]
+    assert load_premises(spark, survey, storage, uuids) == {}
+
+
+def test_no_screening_records_no_incidence(spark, personas_frame, tmp_path):
+    """測っていないことと、全員該当は違う。1.0 と書いてはいけない（§9）。"""
+    from persona_sim.metadata import write_metadata
+
+    survey = survey_from_dict(_survey_dict(screening=False))
+    storage = _prepare(spark, personas_frame, tmp_path, survey)
+    screen_survey(spark, survey, storage, client=_JudgeClient())
+    result = run_survey(spark, survey, storage, client=FakeClient())
+
+    path = write_metadata(spark, survey, result, storage, str(tmp_path / "outputs"))
+    panel = json.loads(path.read_text(encoding="utf-8"))["panel"]
+
+    assert panel["screener_method"] is None
+    assert panel["screener_incidence_estimated"] is None
+    assert panel["oversample_actual"] is None
+
+
+# --------------------------------------------------------------------------- #
+# 判定の再利用と再判定（issue 202607281420 項目7）
+# --------------------------------------------------------------------------- #
+
+
 def test_infer_finalizes_panel_without_asking(spark, personas_frame, tmp_path):
     """判定はするが本人には聞かない。パネルは確定する。"""
-    survey = survey_from_dict(_survey_dict(mode="infer", oversample_factor=4))
+    survey = survey_from_dict(_survey_dict(oversample_factor=4))
     storage = _prepare(spark, personas_frame, tmp_path, survey)
 
     client = _JudgeClient()
@@ -458,7 +436,7 @@ def test_infer_finalizes_panel_without_asking(spark, personas_frame, tmp_path):
 
 def test_infer_keeps_screened_out_rows(spark, personas_frame, tmp_path):
     """非通過も残す。インシデンス検証に使う（AGENTS.md 不変条件）。"""
-    survey = survey_from_dict(_survey_dict(mode="infer", oversample_factor=4))
+    survey = survey_from_dict(_survey_dict(oversample_factor=4))
     storage = _prepare(spark, personas_frame, tmp_path, survey)
     screen_survey(spark, survey, storage, client=_JudgeClient())
 
@@ -467,7 +445,7 @@ def test_infer_keeps_screened_out_rows(spark, personas_frame, tmp_path):
 
 def test_infer_batches_candidates(spark, personas_frame, tmp_path):
     """1呼び出しに複数ペルソナをまとめる。これが ask より安い理由。"""
-    data = _survey_dict(mode="infer", oversample_factor=4)
+    data = _survey_dict(oversample_factor=4)
     data["screening"]["batch_size"] = 10
     survey = survey_from_dict(data)
     storage = _prepare(spark, personas_frame, tmp_path, survey)
@@ -483,7 +461,7 @@ def test_infer_records_are_flagged_as_inferred(spark, personas_frame, tmp_path):
     """`ask` の実回答と区別できること。"""
     from persona_sim.run import flags as flag_names
 
-    survey = survey_from_dict(_survey_dict(mode="infer", oversample_factor=4))
+    survey = survey_from_dict(_survey_dict(oversample_factor=4))
     storage = _prepare(spark, personas_frame, tmp_path, survey)
     screen_survey(spark, survey, storage, client=_JudgeClient())
 
@@ -497,7 +475,7 @@ def test_infer_premise_reaches_the_survey_prompt(spark, personas_frame, tmp_path
     from persona_sim.panel.schema import PromptHeadings
     from persona_sim.panel.screening import load_premises
 
-    survey = survey_from_dict(_survey_dict(mode="infer", oversample_factor=4))
+    survey = survey_from_dict(_survey_dict(oversample_factor=4))
     storage = _prepare(spark, personas_frame, tmp_path, survey)
     screen_survey(spark, survey, storage, client=_JudgeClient())
 
@@ -522,7 +500,7 @@ def test_infer_incidence_is_recorded_as_estimated(spark, personas_frame, tmp_pat
     from persona_sim.metadata import build_metadata
     from persona_sim.run.run import RunResult
 
-    survey = survey_from_dict(_survey_dict(mode="infer", oversample_factor=4))
+    survey = survey_from_dict(_survey_dict(oversample_factor=4))
     storage = _prepare(spark, personas_frame, tmp_path, survey)
     screen_survey(spark, survey, storage, client=_JudgeClient())
 
@@ -538,7 +516,6 @@ def test_infer_incidence_is_recorded_as_estimated(spark, personas_frame, tmp_pat
     panel = metadata["panel"]
 
     assert panel["screener_method"] == "infer"
-    assert panel["screener_incidence"] is None
     assert panel["screener_incidence_estimated"]
     assert panel["screener_incidence_estimated"]["total"] > 0
 
@@ -550,7 +527,7 @@ def test_infer_records_judging_conditions(spark, personas_frame, tmp_path):
     from persona_sim.metadata import build_metadata
     from persona_sim.run.run import RunResult
 
-    data = _survey_dict(mode="infer", oversample_factor=4)
+    data = _survey_dict(oversample_factor=4)
     data["screening"]["batch_size"] = 10
     data["screening"]["model"] = {"deployment": "judge-endpoint", "max_tokens": 256}
     data["screening"]["persona_card"] = {
@@ -580,7 +557,7 @@ def test_infer_records_judging_conditions(spark, personas_frame, tmp_path):
 
 def test_infer_rerun_does_not_judge_again(spark, personas_frame, tmp_path):
     """判定済みなら聞き直さない（同じコマンドを二度打っても壊れない）。"""
-    survey = survey_from_dict(_survey_dict(mode="infer", oversample_factor=4))
+    survey = survey_from_dict(_survey_dict(oversample_factor=4))
     storage = _prepare(spark, personas_frame, tmp_path, survey)
     screen_survey(spark, survey, storage, client=_JudgeClient())
 
@@ -595,7 +572,7 @@ def test_infer_endpoint_failure_does_not_finalize_the_panel(spark, personas_fram
     確定させてしまうと、聞けていないだけの候補が `screened_out` として残り、
     実インシデンス0%（＝条件に合う人がいない）と見分けがつかなくなる。
     """
-    survey = survey_from_dict(_survey_dict(mode="infer", oversample_factor=4))
+    survey = survey_from_dict(_survey_dict(oversample_factor=4))
     storage = _prepare(spark, personas_frame, tmp_path, survey)
 
     client = _FailingJudgeClient()
@@ -616,7 +593,7 @@ def test_infer_rejudges_candidates_whose_judgement_failed(spark, personas_frame,
     失敗を「判定済み・非通過」として残すと、再実行時に `todo` が空になり、
     LLM を1回も呼ばないまま「実インシデンスが低い」と誤診して打ち切っていた。
     """
-    survey = survey_from_dict(_survey_dict(mode="infer", oversample_factor=4))
+    survey = survey_from_dict(_survey_dict(oversample_factor=4))
     storage = _prepare(spark, personas_frame, tmp_path, survey)
     screen_survey(spark, survey, storage, client=_FailingJudgeClient())
 
@@ -634,11 +611,11 @@ def test_infer_rejudges_when_the_prompt_changes(spark, personas_frame, tmp_path)
     ここが効かないと、system prompt や rule をどう書き換えても古い判定が
     再利用され、結果が1件も変わらない（docs/issues/screeningの問題.md）。
     """
-    survey = survey_from_dict(_survey_dict(mode="infer", oversample_factor=4))
+    survey = survey_from_dict(_survey_dict(oversample_factor=4))
     storage = _prepare(spark, personas_frame, tmp_path, survey)
     screen_survey(spark, survey, storage, client=_JudgeClient())
 
-    data = _survey_dict(mode="infer", oversample_factor=4)
+    data = _survey_dict(oversample_factor=4)
     data["screening"]["prompt"] = {"rule": "条件に明確に反する人物のみを除いてください。"}
     changed = survey_from_dict(data)
 
@@ -651,11 +628,11 @@ def test_infer_rejudges_when_the_prompt_changes(spark, personas_frame, tmp_path)
 
 def test_infer_rejudges_when_the_judge_model_changes(spark, personas_frame, tmp_path):
     """判定モデルを差し替えたときも同じ。別のモデルの判定は別物。"""
-    survey = survey_from_dict(_survey_dict(mode="infer", oversample_factor=4))
+    survey = survey_from_dict(_survey_dict(oversample_factor=4))
     storage = _prepare(spark, personas_frame, tmp_path, survey)
     screen_survey(spark, survey, storage, client=_JudgeClient())
 
-    data = _survey_dict(mode="infer", oversample_factor=4)
+    data = _survey_dict(oversample_factor=4)
     data["screening"]["model"] = {"deployment": "別の判定エンドポイント"}
     second = _JudgeClient()
     screen_survey(spark, survey_from_dict(data), storage, client=second)
@@ -664,11 +641,11 @@ def test_infer_rejudges_when_the_judge_model_changes(spark, personas_frame, tmp_
 
 def test_infer_reuses_when_only_oversample_factor_changes(spark, personas_frame, tmp_path):
     """倍率は判定の中身を変えない。指紋に含めると再試行のたびに全件聞き直しになる。"""
-    survey = survey_from_dict(_survey_dict(mode="infer", oversample_factor=4))
+    survey = survey_from_dict(_survey_dict(oversample_factor=4))
     storage = _prepare(spark, personas_frame, tmp_path, survey)
     screen_survey(spark, survey, storage, client=_JudgeClient())
 
-    wider = survey_from_dict(_survey_dict(mode="infer", oversample_factor=8))
+    wider = survey_from_dict(_survey_dict(oversample_factor=8))
     second = _JudgeClient()
     screen_survey(spark, wider, storage, client=second)
     assert second.calls == 0
@@ -676,7 +653,7 @@ def test_infer_reuses_when_only_oversample_factor_changes(spark, personas_frame,
 
 def test_infer_force_rejudges_everyone(spark, personas_frame, tmp_path):
     """設定を変えていなくても `--force` なら聞き直す（手動の逃げ道）。"""
-    survey = survey_from_dict(_survey_dict(mode="infer", oversample_factor=4))
+    survey = survey_from_dict(_survey_dict(oversample_factor=4))
     storage = _prepare(spark, personas_frame, tmp_path, survey)
     screen_survey(spark, survey, storage, client=_JudgeClient())
 
@@ -695,7 +672,7 @@ def test_screener_responses_carry_the_config_hash(spark, personas_frame, tmp_pat
 
     from persona_sim.panel.screening import CONFIG_HASH_COLUMN, screening_fingerprint
 
-    survey = survey_from_dict(_survey_dict(mode="infer", oversample_factor=4))
+    survey = survey_from_dict(_survey_dict(oversample_factor=4))
     storage = _prepare(spark, personas_frame, tmp_path, survey)
     screen_survey(spark, survey, storage, client=_JudgeClient())
 
@@ -710,7 +687,7 @@ def test_screener_responses_carry_the_config_hash(spark, personas_frame, tmp_pat
 
 def test_rows_without_a_config_hash_are_rejudged(spark, personas_frame, tmp_path):
     """`config_hash` 列を持たない古いテーブルからは、全件を聞き直して自己修復する。"""
-    survey = survey_from_dict(_survey_dict(mode="infer", oversample_factor=4))
+    survey = survey_from_dict(_survey_dict(oversample_factor=4))
     storage = _prepare(spark, personas_frame, tmp_path, survey)
     screen_survey(spark, survey, storage, client=_JudgeClient())
 
@@ -745,7 +722,7 @@ def test_low_incidence_stops_before_exhausting_the_retries(spark, personas_frame
             self.calls += 1
             return Completion(text="なし", latency_ms=1, input_tokens=1, output_tokens=1)
 
-    survey = survey_from_dict(_survey_dict(mode="infer", oversample_factor=4))
+    survey = survey_from_dict(_survey_dict(oversample_factor=4))
     storage = _prepare(spark, personas_frame, tmp_path, survey)
 
     client = _RejectAll()
@@ -774,11 +751,11 @@ def test_a_cell_without_candidates_is_reported_as_short(spark, personas_frame, t
     """
     from persona_sim.panel.build import finalize_panel
 
-    survey = survey_from_dict(_survey_dict(mode="infer"))
+    survey = survey_from_dict(_survey_dict())
     storage = _prepare(spark, personas_frame, tmp_path, survey)
 
     # 同じ survey_id のまま、候補を1件も持たないセルを割り付けに足す。
-    widened = _survey_dict(mode="infer")
+    widened = _survey_dict()
     widened["panel"]["size"] = CELL_SIZE * 2
     widened["panel"]["quotas"]["cells"] = [
         {"cell_id": "M_20_40s", "sex": "男", "age_min": 20, "age_max": 49, "n": CELL_SIZE},

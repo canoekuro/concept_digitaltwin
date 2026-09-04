@@ -343,7 +343,6 @@ def test_condition_becomes_a_natural_language_screener(ui):
     screening = data["screening"]
     assert screening["conditions"] == ["週1回以上ビールまたは発泡酒を飲む人"]
     assert "questions" not in screening
-    assert screening["mode"] == "infer"
 
 
 def test_blank_condition_skips_screening(ui):
@@ -571,32 +570,17 @@ def test_built_survey_omits_output_formats(ui):
     assert build_survey(ui, _form()).output.formats == ("csv", "xlsx")
 
 
-def test_non_infer_screening_omits_the_judge_settings(ui):
-    """`assume` では判定の LLM を呼ばないので、使われない設定を残さない。"""
-    from dataclasses import replace
-
-    assume_ui = replace(ui, screening=replace(ui.screening, mode="assume"))
-    screening = build_survey_dict(assume_ui, _form())["screening"]
-
-    assert screening["mode"] == "assume"
-    for unused in ("model", "prompt", "persona_card", "oversample_factor", "batch_size"):
-        assert unused not in screening
-
-
-def test_infer_screening_omits_logic(ui):
-    """`infer` では判定の指示が prompt.rule に一本化されており、logic は効かない。
-
-    書けば調査定義の読み込みで停止するので、UI 側でも書いてはいけない。
-    """
+def test_screening_carries_the_judge_settings(ui):
+    """判定用 LLM のモデル・プロンプト・カードを調査定義に載せる（§4.2）。"""
     screening = build_survey_dict(ui, _form())["screening"]
-    assert screening["mode"] == "infer"
+
+    assert screening["oversample_factor"] == ui.screening.oversample_factor
+    for key in ("model", "prompt", "persona_card"):
+        assert screening[key]
+
+
+def test_screening_does_not_carry_a_mode_or_logic(ui):
+    """方式は1つしか無いので書かない。条件の結合は prompt.rule の文面が決める。"""
+    screening = build_survey_dict(ui, _form())["screening"]
+    assert "mode" not in screening
     assert "logic" not in screening
-
-
-@pytest.mark.parametrize("mode", ["ask", "assume"])
-def test_logic_is_kept_for_other_modes(ui, mode):
-    """`ask` では通過判定の結合方法として今も効くので、そのまま渡す。"""
-    from dataclasses import replace
-
-    other_ui = replace(ui, screening=replace(ui.screening, mode=mode))
-    assert build_survey_dict(other_ui, _form())["screening"]["logic"] == ui.screening.logic

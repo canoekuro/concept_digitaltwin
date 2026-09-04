@@ -275,10 +275,9 @@ def _load_panel(spark: SparkSession, survey: SurveyDefinition, storage: StorageC
         .collect()
     )
     if not rows:
-        screener = survey.screening
         hint = (
             "先に `panel.screening.screen_survey()` を実行すること（候補は抽出済みだが未判定）"
-            if screener is not None and screener.calls_llm
+            if survey.screening is not None
             else "先に `panel.build.build_panel()` を実行すること"
         )
         raise PersonaSimError(f"survey_id={survey.survey_id} に role=main のパネルが1件も無い。{hint}")

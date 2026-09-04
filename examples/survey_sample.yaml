@@ -57,9 +57,7 @@ screening:
     persona_fields:
       - { field: "hobbies_and_interests", label: "趣味・関心事" }
 
-  mode: "infer"                 # ask（実際に聞く）| assume（前提として与える）| infer（蓋然性で選ぶ）
   oversample_factor: 4          # 候補の抽出倍率。通過者が構造的に足りないときは早期に停止する
-  # logic: は書かない。infer では判定の指示が上の prompt.rule に一本化されている
   batch_size: 20                # 1回の判定に渡すペルソナ数
   conditions:
     - "缶チューハイ・缶ハイボールを月1回以上飲む"

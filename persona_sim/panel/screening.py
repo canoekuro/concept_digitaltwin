@@ -33,17 +33,11 @@ from persona_sim.panel.schema import (
     ModelConfig,
     PersonaCardConfig,
     PromptHeadings,
-    Question,
-    QuestionType,
-    ScreenerLogic,
-    ScreenerMode,
-    ScreenerQuestion,
     ScreeningConfig,
     SurveyDefinition,
 )
 from persona_sim.run import flags as flag_names
 from persona_sim.run.prompt import PremiseBlock
-from persona_sim.run.session import NO_STIMULUS, Session, Unit
 
 if TYPE_CHECKING:  # pragma: no cover
     from pyspark.sql import DataFrame, SparkSession
@@ -54,6 +48,9 @@ SCREENER_KEYS = ("survey_id", "persona_uuid", "question_id")
 #: `mode: infer` の判定結果を入れる予約 `question_id`（§2.6）。
 #: 判定は条件ごとではなく候補1人につき1回なので、対応する設問IDが存在しない。
 #: 通過なら `answer_codes: [1]`、非通過なら空。`ask` の実回答とは `inferred` フラグで区別する。
+#: 方式は1つだけ。`runs.screener_method` と `ScreeningResult.method` に入る。
+SCREENER_METHOD = "infer"
+
 INFER_QUESTION_ID = "_infer"
 
 #: `INFER_QUESTION_ID` の通過を表す選択肢番号。
@@ -97,44 +94,20 @@ def screening_fingerprint(survey: SurveyDefinition) -> str:
     if survey.screening is None:
         return ""
 
+    from persona_sim.panel.infer import judge_model
+
     screener = survey.screening
+    # 判定は別セッションの LLM。見せる人物像もプロンプトもスクリーニング側のもの。
     payload: dict[str, Any] = {
-        "mode": str(screener.mode),
         "conditions": list(screener.conditions),
-        "questions": [
-            {
-                "id": question.id,
-                "text": question.text,
-                "type": str(question.type),
-                "options": list(question.options),
-                "pass_if": list(question.pass_if),
-                "premise": question.premise,
-            }
-            for question in screener.questions
-        ],
-    }
-
-    if screener.infers:
-        from persona_sim.panel.infer import judge_model
-
-        # 判定は別セッションの LLM。見せる人物像もプロンプトもスクリーニング側のもの。
-        payload["batch_size"] = screener.batch_size
-        payload["model"] = _model_fingerprint(judge_model(survey.model, screener))
-        payload["prompt"] = {
+        "batch_size": screener.batch_size,
+        "model": _model_fingerprint(judge_model(survey.model, screener)),
+        "prompt": {
             "system": screener.prompt.system,
             "rule": screener.prompt.rule,
-        }
-        payload["persona_card"] = _persona_card_fingerprint(screener.persona_card)
-    else:
-        # `ask` は本人に聞く。効くのは本調査のモデル・プロンプト・ペルソナカード。
-        payload["logic"] = str(screener.logic)
-        payload["model"] = _model_fingerprint(survey.model)
-        payload["prompt"] = {
-            "system": survey.prompt.system,
-            "single": survey.prompt.rules.single,
-            "multi": survey.prompt.rules.multi,
-        }
-        payload["persona_card"] = _persona_card_fingerprint(survey.persona_card)
+        },
+        "persona_card": _persona_card_fingerprint(screener.persona_card),
+    }
 
     encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()[:16]
@@ -166,89 +139,6 @@ def _persona_card_fingerprint(card: PersonaCardConfig) -> dict[str, Any]:
     }
 
 
-def to_question(screener_question: ScreenerQuestion) -> Question:
-    """スクリーナー設問を実行エンジンが扱える `Question` に変換する。
-
-    選択肢はシャッフルしない。頻度尺度など順序尺度が大半で、順序を崩す意味が無い。
-    """
-    return Question(
-        id=screener_question.id,
-        text=screener_question.text,
-        type=screener_question.type,
-        options=screener_question.options,
-        randomize_options=False,
-    )
-
-
-def question_map(screener: ScreeningConfig) -> dict[str, Question]:
-    return {q.id: to_question(q) for q in screener.questions}
-
-
-def question_passed(screener_question: ScreenerQuestion, codes: Sequence[int]) -> bool:
-    """1設問の通過判定。
-
-    `codes` は選択された選択肢番号（定義順）。空なら非通過。
-    パース失敗（番号が取れなかった）も空として渡されるので非通過になる。
-    複数選択では、選んだもののうち1つでも `pass_if` にあれば通過とみなす。
-    """
-    if not codes:
-        return False
-    return any(code in screener_question.pass_if for code in codes)
-
-
-def persona_passed(screener: ScreeningConfig, codes_by_question: Mapping[str, Sequence[int]]) -> bool:
-    """`logic` に従ってペルソナ全体の通過を判定する。
-
-    回答が1件も無い設問は非通過扱い（`all` なら全体も非通過）。
-
-    `infer` は候補1人につき判定1回で、条件ごとの回答は存在しない。
-    予約IDの下に通過（`[1]`）／非通過（`[]`）だけが入る。条件をどう結合するかは
-    判定プロンプト（`screening.prompt.rule`）の文面が決めるので、`logic` は使わない
-    （`infer` では書けない。`UNUSED_INFER_SCREENER_KEYS`）。
-    """
-    if not screener.asks:
-        return bool(codes_by_question.get(INFER_QUESTION_ID))
-    results = [
-        question_passed(question, codes_by_question.get(question.id, ()))
-        for question in screener.questions
-    ]
-    if not results:
-        return True
-    return all(results) if screener.logic is ScreenerLogic.ALL else any(results)
-
-
-def ask_premise(
-    screener: ScreeningConfig,
-    codes_by_question: Mapping[str, Sequence[int]],
-    headings: PromptHeadings | None = None,
-) -> PremiseBlock | None:
-    """`ask` の前提ブロック。本人が実際に選んだ選択肢をそのまま並べる。
-
-    言い換えを挟むと、本人が答えていない内容を混ぜてしまう。
-    """
-    headings = headings or PromptHeadings()
-    lines = []
-    for question in screener.questions:
-        codes = codes_by_question.get(question.id, ())
-        chosen = [
-            question.options[code - 1]
-            for code in codes
-            if 1 <= code <= len(question.options)
-        ]
-        if chosen:
-            lines.append(f"{question.card_label()}: {'、'.join(chosen)}")
-    return PremiseBlock(heading=headings.ask_premise, lines=tuple(lines)) if lines else None
-
-
-def assume_premise(
-    screener: ScreeningConfig, headings: PromptHeadings | None = None
-) -> PremiseBlock | None:
-    """`assume` の前提ブロック。調査定義に書かれた条件文をそのまま与える。"""
-    headings = headings or PromptHeadings()
-    lines = screener.condition_texts()
-    return PremiseBlock(heading=headings.assume_premise, lines=lines) if lines else None
-
-
 def infer_premise(
     screener: ScreeningConfig, headings: PromptHeadings | None = None
 ) -> PremiseBlock | None:
@@ -260,29 +150,6 @@ def infer_premise(
     headings = headings or PromptHeadings()
     lines = screener.condition_texts()
     return PremiseBlock(heading=headings.infer_premise, lines=lines) if lines else None
-
-
-def build_screener_sessions(screener: ScreeningConfig, persona_uuids: Sequence[str]) -> list[Session]:
-    """スクリーナーのセッション一覧。
-
-    コンセプトを見せないので `stimulus_id` は `NO_STIMULUS`。会話履歴も持たない
-    （1設問1セッション）。設問外側・ペルソナ内側に並べて prefix cache を効かせる。
-    """
-    return [
-        Session(
-            persona_uuid=persona_uuid,
-            units=(
-                Unit(
-                    persona_uuid=persona_uuid,
-                    stimulus_id=NO_STIMULUS,
-                    question_id=question.id,
-                    sequence=0,
-                ),
-            ),
-        )
-        for question in screener.questions
-        for persona_uuid in persona_uuids
-    ]
 
 
 @dataclass
@@ -298,12 +165,17 @@ class ScreeningVerdict:
         return self.tested - self.passed
 
 
-def judge(screener: ScreeningConfig, codes_by_persona: Mapping[str, Mapping[str, Sequence[int]]]) -> ScreeningVerdict:
+def judge(codes_by_persona: Mapping[str, Mapping[str, Sequence[int]]]) -> ScreeningVerdict:
+    """判定結果を通過／非通過に振り分ける。
+
+    `infer` は候補1人につき判定1回で、予約IDの下に通過（`[1]`）／非通過（`[]`）だけが入る。
+    条件をどう結合するかは判定プロンプト（`screening.prompt.rule`）の文面が決める。
+    """
     verdict = ScreeningVerdict()
     for persona_uuid, codes in codes_by_persona.items():
         verdict.tested.add(persona_uuid)
         verdict.codes[persona_uuid] = {qid: tuple(v) for qid, v in codes.items()}
-        if persona_passed(screener, codes):
+        if codes.get(INFER_QUESTION_ID):
             verdict.passed.add(persona_uuid)
     return verdict
 
@@ -319,10 +191,7 @@ def load_premises(
     storage,
     persona_uuids: Sequence[str],
 ) -> dict[str, PremiseBlock]:
-    """ペルソナごとの前提ブロックを作る（§6.1）。
-
-    `assume` は全員に同じ文言、`ask` は各自の回答から組み立てる。
-    スクリーナーが無ければ空。
+    """ペルソナごとの前提ブロックを作る（§6.1）。スクリーナーが無ければ空。
 
     判定結果は**現在の設定で得たものだけ**を見る。指紋で絞らないと、設定を変えた後に
     古い判定を根拠として前提ブロックを配ってしまう。
@@ -331,57 +200,30 @@ def load_premises(
     if screener is None:
         return {}
 
-    headings = survey.prompt.headings
-    if screener.mode is ScreenerMode.ASSUME:
-        premise = assume_premise(screener, headings)
-        return {uuid: premise for uuid in persona_uuids} if premise else {}
+    premise = infer_premise(screener, survey.prompt.headings)
+    if premise is None:
+        return {}
 
-    fingerprint = screening_fingerprint(survey)
-    if screener.infers:
-        # 通過者だけに与える。ここに来るのは確定パネルの面々なので全員が通過者だが、
-        # 判定結果が残っていないペルソナには与えない（黙って条件を付けない）。
-        premise = infer_premise(screener, headings)
-        if premise is None:
-            return {}
-        judged = read_screener_codes(spark, survey, storage, config_hash=fingerprint)
-        expected = expected_question_ids(screener)
-        return {
-            uuid: premise
-            for uuid in persona_uuids
-            if any(judged.get(uuid, {}).get(qid) for qid in expected)
-        }
-
-    codes_by_persona = read_screener_codes(spark, survey, storage, config_hash=fingerprint)
-    premises = {}
-    for persona_uuid in persona_uuids:
-        premise = ask_premise(screener, codes_by_persona.get(persona_uuid, {}), headings)
-        if premise:
-            premises[persona_uuid] = premise
-    return premises
+    # 通過者だけに与える。ここに来るのは確定パネルの面々なので全員が通過者だが、
+    # 判定結果が残っていないペルソナには与えない（黙って条件を付けない）。
+    judged = read_screener_codes(
+        spark, survey, storage, config_hash=screening_fingerprint(survey)
+    )
+    return {
+        uuid: premise for uuid in persona_uuids if judged.get(uuid, {}).get(INFER_QUESTION_ID)
+    }
 
 
 def expected_question_ids(screener: ScreeningConfig) -> tuple[str, ...]:
-    """その方式で `screener_responses` に現れるべき `question_id`。
-
-    `ask` は設問ごとに1行、`infer` は候補1人につき1行（予約ID）。判定済みかどうかの
-    判断はこの一覧で行う。**設問一覧を直接見てはいけない** — `infer` では空なので
-    「全設問に答えている」が空集合に対して常に真になり、誰も判定されなくなる。
-    """
-    if screener.asks:
-        return tuple(question.id for question in screener.questions)
+    """`screener_responses` に現れるべき `question_id`。候補1人につき1行（予約ID）。"""
     return (INFER_QUESTION_ID,)
 
 
-def skipped_session_count(
-    screener: ScreeningConfig, skipped_personas: int, expected: Sequence[str]
-) -> int:
+def skipped_session_count(screener: ScreeningConfig, skipped_personas: int) -> int:
     """判定済みで聞き直さなかったぶんを、`sessions_total` と**同じ単位**で数える。
 
-    `ask` は1設問＝1セッションなので `人数 × 設問数`。
-    `infer` は1バッチ＝1呼び出しなので**バッチ数**に換算する。
-
-    ここを揃えないと、`infer` で `sessions_total` がバッチ数・`sessions_skipped` が人数になり、
-    CLI が両方を同じ「バッチ」というラベルで並べるため
+    1バッチ＝1呼び出しなので**バッチ数**に換算する。ここを揃えないと `sessions_total` が
+    バッチ数・`sessions_skipped` が人数になり、同じラベルで並べたときに
     「1バッチ中 380 スキップ」のように**内訳が総数を超えて**見える。
 
     バッチ境界とは厳密には一致しない（実際にどう切られたかは候補の並びによる）が、
@@ -389,11 +231,9 @@ def skipped_session_count(
     """
     if skipped_personas <= 0:
         return 0
-    if screener.infers:
-        from persona_sim.panel.infer import infer_session_count
+    from persona_sim.panel.infer import infer_session_count
 
-        return infer_session_count(skipped_personas, screener)
-    return skipped_personas * len(expected)
+    return infer_session_count(skipped_personas, screener)
 
 
 def read_screener_codes(
@@ -552,18 +392,6 @@ def incidence_from_panels(panel_rows: Sequence[Mapping[str, object]]) -> dict[st
     }
 
 
-def screener_session_count(survey: SurveyDefinition) -> int:
-    """`ask` で必要になるスクリーニングのセッション数（§10.1 の見積もり）。
-
-    条件の数で数える。`assume` / `infer` を選んでいても「`ask` にしたらいくらか」を
-    出せるようにしておく（方式を選ぶための比較材料。§10.1）。
-    """
-    screener = survey.screening
-    if screener is None:
-        return 0
-    return survey.panel.size * screener.oversample_factor * len(screener.condition_texts())
-
-
 def infer_call_count(survey: SurveyDefinition) -> int:
     """`infer` で必要になる判定呼び出し回数（§10.1 の見積もり）。
 
@@ -648,26 +476,20 @@ def screen_survey(
     from persona_sim.panel.quotas import allocate_cell_sizes
     from persona_sim.panel.sampling import ROLE_CANDIDATE
     from persona_sim.personas.load import load_personas
-    from persona_sim.run.executor import execute
-    from persona_sim.run.session import OutputBudgetState, SessionContext, StructuredOutputState
     from persona_sim.storage import delta
     from persona_sim.storage.locator import PANELS, SCREENER_RESPONSES, locator
 
     screener = survey.screening
     if screener is None:
         return ScreeningResult(method="none")
-    if not screener.calls_llm:
-        # `assume` は聞かないので判定するものが無い（`panel` が確定パネルを出している）。
-        return ScreeningResult(method=str(screener.mode), oversample_actual=1)
 
-    # `infer` は判定用モデルを使う。省略されたキーは調査本体の model を引き継ぐ。
-    model = judge_model(survey.model, screener) if screener.infers else survey.model
+    # 判定用モデル。省略されたキーは調査本体の model を引き継ぐ。
+    model = judge_model(survey.model, screener)
     client = client or build_client(model)
-    questions = question_map(screener)
     screener_locator = locator(SCREENER_RESPONSES, storage)
     panels_locator = locator(PANELS, storage)
 
-    result = ScreeningResult(method=str(screener.mode))
+    result = ScreeningResult(method=SCREENER_METHOD)
     result.config_hash = fingerprint = screening_fingerprint(survey)
     result.refreshed = force
     factor = screener.oversample_factor
@@ -720,44 +542,22 @@ def screen_survey(
             if (force and attempt == 0)
             else read_screener_codes(spark, survey, storage, config_hash=fingerprint)
         )
-        expected = expected_question_ids(screener)
         todo = [
             persona_uuid
             for persona_uuid in candidates
-            if not all(qid in answered.get(persona_uuid, {}) for qid in expected)
+            if INFER_QUESTION_ID not in answered.get(persona_uuid, {})
         ]
         result.sessions_skipped += skipped_session_count(
-            screener, len(candidates) - len(todo), expected
+            screener, len(candidates) - len(todo)
         )
 
         if todo:
             personas = load_personas(spark, survey, storage, todo)
-            if screener.infers:
-                execution = _infer_execution(
-                    survey, screener, personas, todo, client, model, progress
-                )
-                result.output_budget_escalated += execution.budget_escalated
-                result.output_budget_exhausted += execution.budget_exhausted
-            else:
-                output_budget = OutputBudgetState()
-                ctx = SessionContext(
-                    survey=survey,
-                    client=client,
-                    personas=personas,
-                    stimuli={},
-                    structured_output=StructuredOutputState(mode=survey.model.structured_output),
-                    output_budget=output_budget,
-                    questions=questions,
-                )
-                execution = execute(
-                    build_screener_sessions(screener, todo),
-                    ctx,
-                    concurrency=survey.model.concurrency,
-                    detector=detector,
-                    progress=progress,
-                )
-                result.output_budget_escalated += output_budget.escalated
-                result.output_budget_exhausted += output_budget.exhausted
+            execution = _infer_execution(
+                survey, screener, personas, todo, client, model, progress
+            )
+            result.output_budget_escalated += execution.budget_escalated
+            result.output_budget_exhausted += execution.budget_exhausted
             result.sessions_total += execution.sessions_total
             result.sessions_ok += execution.sessions_ok
             result.sessions_failed += execution.sessions_failed
@@ -779,9 +579,7 @@ def screen_survey(
                 result.aborted_reason = execution.aborted_reason
                 return _finish(result, client)
 
-        verdict = judge(
-            screener, read_screener_codes(spark, survey, storage, config_hash=fingerprint)
-        )
+        verdict = judge(read_screener_codes(spark, survey, storage, config_hash=fingerprint))
         finalized = finalize_panel(spark, survey, storage, verdict.passed)
         result.achieved = finalized.achieved
         result.reserve = finalized.reserve
@@ -998,12 +796,3 @@ def _shortfall_message(
         + "\n".join(lines)
         + f"\n実インシデンス: {rates}"
     )
-
-
-def unsupported_question_types(screener: ScreeningConfig) -> list[str]:
-    """通過判定に使えない設問タイプ。自由回答は機械判定できない。"""
-    return [
-        question.id
-        for question in screener.questions
-        if question.type not in (QuestionType.SINGLE, QuestionType.MULTI)
-    ]

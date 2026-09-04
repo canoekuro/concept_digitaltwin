@@ -143,40 +143,6 @@ DEFAULT_REQUEST_TIMEOUT_SEC = 60
 #: 指示行にだけ入る値で、実際の打ち切りは `model.max_tokens_reasoning` が担う。
 DEFAULT_REASONING_MAX_LENGTH = 80
 
-#: スクリーナーで方式に合わない書き方をしたときの案内（§4.2）。
-#:
-#: `assume` / `infer` は選択肢を提示しない。`options` と `pass_if` を書かせても
-#: 使い道が無く、「設定したつもり」の記録だけが残るため、自然言語の `conditions` に寄せた。
-MISPLACED_SCREENER_KEYS = {
-    "questions": (
-        "mode: assume / infer では questions: を書けない。選択肢を提示しないため"
-        " options や pass_if に意味が無い。対象者条件は conditions: に自然言語で書くこと"
-        "（questions[].premise に書いていた文言をそのまま移せばよい）。"
-    ),
-    "conditions": (
-        "mode: ask では conditions: を書けない。実際に選択肢を見せて答えさせるため、"
-        " questions: に text / options / pass_if を書くこと。"
-        "ペルソナカードに載せる前提文は questions[].premise で指定する。"
-    ),
-}
-
-
-#: `mode: infer` では書けなくなったキーと、その行き先（§4.2）。
-#:
-#: `logic` は以前、判定プロンプトに「すべての条件を満たす人物を選んでください」という
-#: 一文を割り込ませていた。設定から触れないその文が `prompt.rule` の直前という最も効く
-#: 位置に入るため、`prompt` をどう書き換えても判定が動かなかった。文を消した以上
-#: `logic` は `infer` で何もしないので、黙って無視せず書けなくする。
-UNUSED_INFER_SCREENER_KEYS = {
-    "logic": (
-        "mode: infer では logic: を書けない。判定の指示は screening.prompt.rule に"
-        "一本化した（すべての条件を満たすのか、いずれかで足りるのかは、その文中に書くこと）。"
-        "以前は logic から判定プロンプトに一文を差し込んでいたが、prompt.rule の直前に"
-        "入るため prompt を書き換えても効かなくなっていた。"
-        " logic: が効くのは mode: ask（pass_if の結合方法）だけ。"
-    ),
-}
-
 
 #: `model` / `infer.model` から廃止したキーと、その理由。
 REMOVED_MODEL_FIELDS = {
@@ -219,42 +185,6 @@ class QuotaCell:
 class Quotas:
     mode: QuotaMode
     cells: tuple[QuotaCell, ...]
-
-
-class ScreenerMode(StrEnum):
-    """対象者条件の満たし方（§4.2）。費用と、得られるものが違う。"""
-
-    #: 実際に聞いて通過者だけを残す。インシデンスを実測できる。
-    ASK = "ask"
-    #: 聞かずに条件を前提として全候補に与える。費用は0だが、インシデンスは測れない。
-    ASSUME = "assume"
-    #: 別のセッションの LLM に候補をまとめて渡し、条件に合致する蓋然性が高い者だけに
-    #: 属性を与える。`ask` より安く、`assume` のような全員への強制も避けられる。
-    #: 聞いてはいないので通過率は**推定値**であり、実測値とは別枠に記録する。
-    INFER = "infer"
-
-
-class ScreenerLogic(StrEnum):
-    """複数設問がある場合の通過条件。"""
-
-    ALL = "all"
-    ANY = "any"
-
-
-@dataclass(frozen=True)
-class ScreenerQuestion:
-    id: str
-    text: str
-    type: QuestionType
-    options: tuple[str, ...]
-    pass_if: tuple[int, ...]
-    #: ペルソナカードに載せるときの短い見出し。省略時は `text` を使う。
-    label: str | None = None
-    #: 通過者のペルソナカードに載せる前提文。省略時は設問文と通過選択肢から組み立てる。
-    premise: str | None = None
-
-    def card_label(self) -> str:
-        return self.label or self.text
 
 
 @dataclass(frozen=True)
@@ -554,70 +484,29 @@ def _default_screening_persona_card() -> PersonaCardConfig:
 class ScreeningConfig:
     """スクリーニング定義（`screening:`、§4.2）。
 
-    **方式ごとに必要な形が違うので、書く場所を分けている。**
-
-    - `ask` … `questions`。本人に選択肢を見せて答えさせるので、選択肢と通過判定が要る
-    - `assume` / `infer` … `conditions`。自然言語の対象者条件だけでよい。
-      `assume` はそれを前提として与え、`infer` はそれを判定用 LLM に見せる。
-      どちらも選択肢を提示しないので、`options` や `pass_if` を書かせる意味がない
+    **方式は1つ。** 対象者条件（`conditions`）を判定用 LLM に見せ、条件に合致する
+    蓋然性が高い候補だけに属性を与える。本人には聞いていないので、通過率は
+    **推定値**であり実測値ではない（`runs.screener_incidence_estimated`）。
 
     並びは本調査（`main_survey`）と対称に model → prompt → persona_card → その他。
     """
 
-    #: 判定に使うモデル。省略したキーは `main_survey.model` を引き継ぐ（`infer` のみ）。
+    #: 判定に使うモデル。省略したキーは `main_survey.model` を引き継ぐ。
     model: InferModelOverrides = field(default_factory=lambda: InferModelOverrides())
-    #: 判定プロンプト（`infer` のみ）。
+    #: 判定プロンプト。
     prompt: ScreeningPromptConfig = field(default_factory=ScreeningPromptConfig)
-    #: 判定に見せるペルソナ像（`infer` のみ）。
+    #: 判定に見せるペルソナ像。
     persona_card: PersonaCardConfig = field(default_factory=_default_screening_persona_card)
-    mode: ScreenerMode = ScreenerMode.ASK
-    #: `ask` のスクリーナー設問。他の方式では空。
-    questions: tuple[ScreenerQuestion, ...] = ()
-    #: `assume` / `infer` の対象者条件（自然言語）。`ask` では空。
+    #: 対象者条件（自然言語）。**言い換えずにそのまま**判定プロンプトと前提ブロックへ渡す。
     conditions: tuple[str, ...] = ()
-    #: `ask` 専用。複数の設問の通過判定をどう結合するか。`infer` では判定の指示を
-    #: `prompt.rule` に一本化しているので効かない（loader が書くことを止める）。
-    logic: ScreenerLogic = ScreenerLogic.ALL
-    #: `ask` / `infer` のときのみ意味を持つ。何倍の候補を抽出して判定するか。
+    #: 何倍の候補を抽出して判定するか。
     oversample_factor: int = 4
-    #: 1回の判定に渡すペルソナ数（`infer` のみ）。
+    #: 1回の判定に渡すペルソナ数。
     batch_size: int = 20
 
     def condition_texts(self) -> tuple[str, ...]:
-        """対象者条件の文言。方式によらずここから取る。
-
-        `ask` は設問から組み立てる（`premise` があればそれ、無ければ設問文と通過選択肢）。
-        `assume` / `infer` は `conditions` をそのまま使う。**言い換えはしない。**
-        """
-        if not self.asks:
-            return self.conditions
-        lines = []
-        for question in self.questions:
-            if question.premise:
-                lines.append(question.premise)
-                continue
-            passing = [
-                question.options[code - 1]
-                for code in question.pass_if
-                if 1 <= code <= len(question.options)
-            ]
-            label = question.card_label()
-            lines.append(f"{label}: {'、'.join(passing)} のいずれか" if passing else label)
-        return tuple(lines)
-
-    @property
-    def asks(self) -> bool:
-        """本人に聞くか。インシデンスを実測できるのはこの方式だけ。"""
-        return self.mode is ScreenerMode.ASK
-
-    @property
-    def infers(self) -> bool:
-        return self.mode is ScreenerMode.INFER
-
-    @property
-    def calls_llm(self) -> bool:
-        """判定に LLM を呼ぶか。`assume` だけが呼ばない。"""
-        return self.mode in (ScreenerMode.ASK, ScreenerMode.INFER)
+        """対象者条件の文言。**言い換えはしない。**"""
+        return self.conditions
 
 
 @dataclass(frozen=True)
