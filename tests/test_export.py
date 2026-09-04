@@ -19,18 +19,12 @@ from persona_sim.aggregate.aggregate import (
 from persona_sim.aggregate.crosstab import Answer, concept_summary, crosstabs
 from persona_sim.aggregate.export import (
     CSV_ENCODING,
-    UI_RAW_SHEET,
-    UI_SUMMARY_SHEET,
+    RAW_SHEET,
+    SUMMARY_SHEET,
     write_csv,
-    write_ui_workbook,
-    write_xlsx,
+    write_workbook,
 )
-from persona_sim.aggregate.tables import (
-    concept_axis_table,
-    concept_summary_table,
-    crosstab_table,
-    stacked_crosstab_table,
-)
+from persona_sim.aggregate.tables import concept_axis_table, stacked_crosstab_table
 from persona_sim.panel.loader import survey_from_dict
 
 openpyxl = pytest.importorskip("openpyxl")
@@ -55,12 +49,19 @@ def _result(survey) -> AggregateResult:
     result.crosstabs = crosstabs(survey, answers, ["total", "sex"])
     result.topline = concept_summary(survey, answers, ["total"])
     result.by_segment = concept_summary(survey, answers, ["total", "sex"])
-    result.tables = [crosstab_table(table) for table in result.crosstabs]
-    result.tables.append(
-        concept_summary_table(
-            survey, result.topline, key="concept_summary", title="比較", with_segment=False
-        )
-    )
+    result.tables = [
+        concept_axis_table(
+            survey,
+            result.crosstabs,
+            "q_intent",
+            key="crosstab_q_intent",
+            title="購入意向",
+            with_segment=True,
+        ),
+        stacked_crosstab_table(
+            survey, result.crosstabs, key="crosstab_all", title="クロス集計表"
+        ),
+    ]
     return result
 
 
@@ -69,22 +70,13 @@ def _result(survey) -> AggregateResult:
 # --------------------------------------------------------------------------- #
 
 
-def test_crosstab_table_headers_follow_the_spec(survey_dict):
+def test_the_table_formats_percentages_and_means(survey_dict):
     survey = survey_from_dict(survey_dict)
-    table = crosstab_table(_result(survey).crosstabs[0])
+    table = _concept_axis(survey, segments=("total",))
+    total = next(row for row in table.rows if row[0] == "コンセプトA")
 
-    assert table.columns[:4] == ("軸", "セグメント", "n", "n(フラグ除外後)")
-    assert table.columns[4] == "1. ぜひ"
-    assert table.columns[-2:] == ("T2B", "平均")
-
-
-def test_crosstab_table_formats_percentages_and_means(survey_dict):
-    survey = survey_from_dict(survey_dict)
-    table = crosstab_table(_result(survey).crosstabs[0])
-    total = next(row for row in table.rows if row[1] == "全体")
-
-    assert total[2] == 4  # n
-    assert total[4] == "50.0%"  # 「ぜひ」を2/4人
+    assert total[1] == 4  # n
+    assert total[3] == "50.0%"  # 「ぜひ」を2/4人
     assert total[-2] == "75.0%"  # T2B = 1と2 = 3/4人
     assert total[-1] == "3.75"  # (5+4+1+5)/4
 
@@ -93,9 +85,10 @@ def test_blank_when_a_metric_does_not_apply(survey_dict):
     """順序尺度でない設問の平均は `-`。空欄にすると0と読み違える。"""
     survey_dict["questions"][0].pop("top_box")
     survey = survey_from_dict(survey_dict)
-    table = crosstab_table(_result(survey).crosstabs[0])
-    assert table.rows[0][-1] == "-"
-    assert table.rows[0][-2] == "-"
+    table = _concept_axis(survey, segments=("total",))
+    total = next(row for row in table.rows if row[0] == "コンセプトA")
+    assert total[-1] == "-"
+    assert total[-2] == "-"
 
 
 # --------------------------------------------------------------------------- #
@@ -125,15 +118,23 @@ def test_concept_axis_table_puts_concepts_down_the_side(survey_dict):
     assert [row[0] for row in table.rows] == ["コンセプトA", "コンセプトB", "コンセプトC"]
 
 
-def test_concept_axis_table_matches_the_segment_side_table(survey_dict):
-    """同じ数字が2通りに出ないこと。転置しているだけで集計はやり直していない。"""
+def test_the_two_table_shapes_agree(survey_dict):
+    """同じ数字が2通りに出ないこと。並べ替えているだけで集計はやり直していない。"""
     survey = survey_from_dict(survey_dict)
     concept = next(row for row in _concept_axis(survey, segments=("total",)).rows
                    if row[0] == "コンセプトA")
-    segment = next(row for row in crosstab_table(_result(survey).crosstabs[0]).rows
-                   if row[1] == "全体")
+    stacked = stacked_crosstab_table(
+        survey, _result(survey).crosstabs, key="k", title="t"
+    )
+    piled = next(
+        row for row in stacked.rows
+        if row[0] == "q_intent" and row[1] == "コンセプトA" and row[3] == "全体"
+    )
 
-    assert concept[1:] == segment[2:]
+    # concept: [コンセプト, n, n(除外後), 選択肢…, T2B, 平均]
+    # piled:   [設問, コンセプト, 軸, セグメント, n, n(除外後), 選択肢…, T2B, 平均]
+    assert concept[1:3] == piled[4:6]
+    assert concept[-2:] == piled[-2:]
 
 
 def test_concept_axis_table_can_carry_the_segment_axis(survey_dict):
@@ -275,14 +276,14 @@ def test_csv_is_written_with_a_bom_so_excel_reads_japanese(tmp_path):
 def test_xlsx_has_a_summary_sheet_first_then_one_sheet_per_table(tmp_path, survey_dict):
     survey = survey_from_dict(survey_dict)
     result = _result(survey)
-    path = write_xlsx(tmp_path / "report.xlsx", survey, result)
+    path = write_workbook(tmp_path / "report.xlsx", survey, result.tables)
 
     workbook = openpyxl.load_workbook(path)
-    assert workbook.sheetnames[0] == "概要"
+    assert workbook.sheetnames[0] == SUMMARY_SHEET
     assert len(workbook.sheetnames) == 1 + len(result.tables)
-    assert "concept_summary" in workbook.sheetnames
+    assert "crosstab_all" in workbook.sheetnames
 
-    summary = workbook["概要"]
+    summary = workbook[SUMMARY_SHEET]
     assert summary["A1"].value == "調査ID"
     assert summary["B1"].value == survey.survey_id
 
@@ -293,7 +294,9 @@ def test_xlsx_sheet_names_stay_within_the_excel_limit(tmp_path, survey_dict):
     for table in result.tables:
         table.key = "crosstab_" + "x" * 40
 
-    workbook = openpyxl.load_workbook(write_xlsx(tmp_path / "r.xlsx", survey, result))
+    workbook = openpyxl.load_workbook(
+        write_workbook(tmp_path / "r.xlsx", survey, result.tables)
+    )
     names = workbook.sheetnames
     assert all(len(name) <= 31 for name in names)
     assert len(set(names)) == len(names)
@@ -302,10 +305,11 @@ def test_xlsx_sheet_names_stay_within_the_excel_limit(tmp_path, survey_dict):
 def test_notes_reach_the_sheet(tmp_path, survey_dict):
     survey = survey_from_dict(survey_dict)
     result = _result(survey)
-    result.notes = ["パース失敗が多い"]
 
-    workbook = openpyxl.load_workbook(write_xlsx(tmp_path / "r.xlsx", survey, result))
-    body = [row[0] for row in workbook["概要"].iter_rows(values_only=True)]
+    workbook = openpyxl.load_workbook(
+        write_workbook(tmp_path / "r.xlsx", survey, result.tables, notes=["パース失敗が多い"])
+    )
+    body = [row[0] for row in workbook[SUMMARY_SHEET].iter_rows(values_only=True)]
     assert "パース失敗が多い" in body
 
 
@@ -316,10 +320,10 @@ def test_the_summary_sheet_carries_the_attribution_and_the_disclaimer(tmp_path, 
     """
     survey = survey_from_dict(survey_dict)
     workbook = openpyxl.load_workbook(
-        write_xlsx(tmp_path / "r.xlsx", survey, _result(survey))
+        write_workbook(tmp_path / "r.xlsx", survey, _result(survey).tables)
     )
     body = "\n".join(
-        str(row[0]) for row in workbook["概要"].iter_rows(values_only=True) if row[0]
+        str(row[0]) for row in workbook[SUMMARY_SHEET].iter_rows(values_only=True) if row[0]
     )
 
     assert "Nemotron-Personas-Japan" in body, "帰属表示（CC BY 4.0）が要る"
@@ -327,20 +331,20 @@ def test_the_summary_sheet_carries_the_attribution_and_the_disclaimer(tmp_path, 
 
 
 # --------------------------------------------------------------------------- #
-# Web UI 用の xlsx（`docs/SPEC_UI.md` §4.4）
+# Web UI のダウンロード（`docs/SPEC_UI.md` §4.4）
+#
+# バッチの `report.xlsx` と同じ writer を通す。渡す表とローデータの有無が違うだけ。
 # --------------------------------------------------------------------------- #
 
 
 def _ui_workbook(tmp_path, survey, **kwargs):
     result = _result(survey)
     table = stacked_crosstab_table(survey, result.crosstabs, key="crosstab", title="クロス集計表")
-    path = write_ui_workbook(tmp_path / "ui.xlsx", survey, table, **kwargs)
+    path = write_workbook(tmp_path / "ui.xlsx", survey, [table], **kwargs)
     return openpyxl.load_workbook(path)
 
 
-def test_ui_workbook_has_one_sheet_for_the_table_and_one_for_the_raw_data(
-    tmp_path, survey_dict
-):
+def test_ui_workbook_carries_the_table_and_the_raw_data(tmp_path, survey_dict):
     """`st.download_button` は1ファイルしか返せないので同梱する。"""
     survey = survey_from_dict(survey_dict)
     workbook = _ui_workbook(
@@ -350,28 +354,27 @@ def test_ui_workbook_has_one_sheet_for_the_table_and_one_for_the_raw_data(
         raw_rows=[["u1", "コンセプトA"]],
     )
 
-    assert workbook.sheetnames == [UI_SUMMARY_SHEET, UI_RAW_SHEET]
-    raw = list(workbook[UI_RAW_SHEET].iter_rows(values_only=True))
+    assert workbook.sheetnames == [SUMMARY_SHEET, "crosstab", RAW_SHEET]
+    raw = list(workbook[RAW_SHEET].iter_rows(values_only=True))
     assert raw[0] == ("persona_uuid", "stimulus_name")
     assert raw[1] == ("u1", "コンセプトA")
 
 
-def test_ui_workbook_keeps_the_notes_above_the_table(tmp_path, survey_dict):
-    """シートは1枚だが E3/E4 の注記は落とさない（`SPEC_PHASE1.md` §11）。"""
+def test_ui_workbook_keeps_the_notes_on_the_first_sheet(tmp_path, survey_dict):
+    """E3/E4 の注記は落とさない（`SPEC_PHASE1.md` §11）。表だけ読まれて終わらせない。"""
     survey = survey_from_dict(survey_dict)
     workbook = _ui_workbook(tmp_path, survey, notes=["品質フラグの立った回答が 30% ある"])
 
-    sheet = workbook[UI_SUMMARY_SHEET]
-    body = [row[0] for row in sheet.iter_rows(values_only=True)]
-    assert "注記: 品質フラグの立った回答が 30% ある" in body
-    # 注記は表頭より上にあること。下に置くと表だけ読まれて終わる。
-    assert body.index("注記: 品質フラグの立った回答が 30% ある") < body.index("設問")
+    body = [row[0] for row in workbook[SUMMARY_SHEET].iter_rows(values_only=True)]
+    assert "品質フラグの立った回答が 30% ある" in body
+    # 1枚目に載っていること。表のシートより後ろに置くと読まれずに終わる。
+    assert workbook.sheetnames[0] == SUMMARY_SHEET
 
 
-def test_ui_workbook_without_raw_data_still_writes(tmp_path, survey_dict):
+def test_ui_workbook_without_raw_data_omits_the_raw_sheet(tmp_path, survey_dict):
     survey = survey_from_dict(survey_dict)
     workbook = _ui_workbook(tmp_path, survey)
-    assert workbook[UI_RAW_SHEET].max_row == 1
+    assert RAW_SHEET not in workbook.sheetnames
 
 
 def test_every_table_row_has_one_value_per_column(survey_dict):

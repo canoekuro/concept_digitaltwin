@@ -47,8 +47,7 @@ PERSONA_SCHEMA = (
 
 #: §7.4 のファイル一式（crosstab_* は設問構成で本数が変わるので別に見る）。
 EXPECTED_FILES = (
-    "concept_summary.csv",
-    "concept_summary_by_segment.csv",
+    "crosstab_all.csv",
     "open_ends.csv",
     "panel_composition.csv",
     "responses_raw.csv",
@@ -138,22 +137,23 @@ def test_every_output_file_is_written(aggregated):
     for name in EXPECTED_FILES:
         assert (destination / name).exists(), f"{name} が出ていない"
 
-    # コンセプト2件 × 選択式1問。自由回答は §7.3 の open_ends.csv へ回る。
+    # 選択式1問なので measure ごとの表は1枚。コンセプトはその表側に並ぶ。
+    # 自由回答は §7.3 の open_ends.csv へ回る。
     crosstabs = sorted(path.name for path in destination.glob("crosstab_*.csv"))
-    assert crosstabs == ["crosstab_c1_q_intent.csv", "crosstab_c2_q_intent.csv"]
+    assert crosstabs == ["crosstab_all.csv", "crosstab_q_intent.csv"]
 
 
 def test_crosstab_csv_has_a_row_for_every_segment(aggregated):
     survey, _, output_dir, _ = aggregated
     from pathlib import Path
 
-    path = Path(output_dir) / survey.survey_id / "crosstab_c1_q_intent.csv"
+    path = Path(output_dir) / survey.survey_id / "crosstab_q_intent.csv"
     with open(path, encoding=CSV_ENCODING, newline="") as handle:
         rows = list(csv.DictReader(handle))
 
     axes = {row["軸"] for row in rows}
     assert axes == {"全体", "sex", "sex_x_age_band_10", "cell_id"}
-    total = next(row for row in rows if row["軸"] == "全体")
+    total = next(row for row in rows if row["軸"] == "全体" and row["コンセプト"])
     assert int(total["n"]) > 0
     assert total["T2B"].endswith("%")
 
@@ -298,8 +298,8 @@ def test_export_rebuilds_the_report_from_aggregates_only(spark, aggregated, tmp_
     assert [path.name for path in written] == ["report.xlsx"]
 
     def crosstab_rows(result):
-        table = next(t for t in result.tables if t.key == "crosstab_c1_q_intent")
-        return {(row[0], row[1]): row[2:] for row in table.rows}
+        table = next(t for t in result.tables if t.key == "crosstab_q_intent")
+        return {(row[0], row[1], row[2]): row[3:] for row in table.rows}
 
     assert crosstab_rows(rebuilt) == crosstab_rows(original)
 

@@ -199,13 +199,13 @@ def workbook_bytes(
     返すのは**バイト列**でパスではない。`tempfile.TemporaryDirectory()` は関数を抜けた
     時点で消えるので、パスをキャッシュすると2回目以降に読めなくなる。
     """
-    from persona_sim.aggregate.export import write_ui_workbook
+    from persona_sim.aggregate.export import write_workbook
 
     with tempfile.TemporaryDirectory() as directory:
-        path = write_ui_workbook(
+        path = write_workbook(
             Path(directory) / f"{survey_id}.xlsx",
             _survey,
-            _table,
+            [_table],
             notes=_notes,
             raw_columns=_raw_columns,
             raw_rows=_raw_rows,

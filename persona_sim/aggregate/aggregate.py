@@ -23,7 +23,7 @@ from persona_sim.aggregate.crosstab import (
     crosstabs,
     tabulated_measures,
 )
-from persona_sim.aggregate.tables import Table, concept_summary_table, crosstab_table
+from persona_sim.aggregate.tables import Table, concept_axis_table, stacked_crosstab_table
 from persona_sim.config import StorageConfig
 from persona_sim.errors import PersonaSimError
 from persona_sim.panel.quotas import allocate_cell_sizes
@@ -209,23 +209,26 @@ def _build_tables(
     panel_rows: Sequence[Mapping[str, Any]],
     result: AggregateResult,
 ) -> list[Table]:
-    tables = [crosstab_table(table) for table in result.crosstabs]
-    tables.append(
-        concept_summary_table(
+    # measure ごとに1表（選択肢ラベルつき）。設問IDではなく measure で束ねるのは、
+    # 同じ問いが slot ごとに別IDへ展開されるため（`tabulated_measures()`）。
+    tables = [
+        concept_axis_table(
             survey,
-            result.topline,
-            key="concept_summary",
-            title="コンセプト比較（全体）",
-            with_segment=False,
-        )
-    )
-    tables.append(
-        concept_summary_table(
-            survey,
-            result.by_segment,
-            key="concept_summary_by_segment",
-            title="コンセプト比較（セグメント別）",
+            result.crosstabs,
+            question.measure_key,
+            key=f"crosstab_{question.measure_key}",
+            title=f"{question.measure_key}: {question.text}",
             with_segment=True,
+        )
+        for question in tabulated_measures(survey)
+    ]
+    # 全設問を1枚に積んだ表。コンセプトを measure 横断で見比べるのはこちら。
+    tables.append(
+        stacked_crosstab_table(
+            survey,
+            result.crosstabs,
+            key="crosstab_all",
+            title="クロス集計表（コンセプト × セグメント）",
         )
     )
     tables.append(panel_composition_table_from_rows(survey, panel_rows))

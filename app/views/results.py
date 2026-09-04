@@ -189,6 +189,6 @@ st.download_button(
     file_name=f"{survey_id}_report.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
-st.caption("集計表とローデータを1つの Excel ファイル（シート2枚）にまとめています。")
+st.caption("概要・集計表・ローデータを1つの Excel ファイル（シート3枚）にまとめています。")
 
 footer()

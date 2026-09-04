@@ -199,13 +199,13 @@ screening:
 
 | ファイル | 内容 |
 |---|---|
-| `crosstab_{stimulus_id}_{measure}.csv` | クロス集計表。表側＝セグメント、表頭＝選択肢 |
-| `concept_summary.csv` / `concept_summary_by_segment.csv` | コンセプト比較表（全体 / セグメント別） |
+| `crosstab_{measure}.csv` | クロス集計表。表側＝コンセプト × セグメント、表頭＝選択肢 |
+| `crosstab_all.csv` | 全設問を1枚に積んだクロス集計表。measure 横断で見比べる用 |
 | `open_ends.csv` | 自由回答＋ペルソナの主要属性 |
 | `panel_composition.csv` | 実際のパネル構成とインシデンス |
 | `responses_raw.csv` | 生データ全件 |
-| `report.xlsx` | 上記をシート分けした1ファイル。先頭に「概要」シート |
-| `run_metadata.json` | 実行メタデータ（`run` が書く） |
+| `report.xlsx` | 上記の表をシート分けした1ファイル。先頭に「概要」シート |
+| `run_metadata.json` | 実行メタデータ（`run_survey()` が書く） |
 
 読むときの前提:
 

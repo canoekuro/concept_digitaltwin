@@ -13,12 +13,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from persona_sim.aggregate import segments as segment_axes
-from persona_sim.aggregate.crosstab import (
-    BLANK,
-    ConceptSummaryRow,
-    Crosstab,
-    tabulated_measures,
-)
+from persona_sim.aggregate.crosstab import BLANK, Crosstab, tabulated_measures
 from persona_sim.panel.schema import SurveyDefinition
 
 #: 表側の見出し。
@@ -60,80 +55,13 @@ def option_column(index: int, label: str) -> str:
     return f"{index}. {label}"
 
 
-def crosstab_table(table: Crosstab) -> Table:
-    """クロス集計表（§7.1）。表側＝セグメント、表頭＝選択肢。"""
-    columns = [AXIS_COLUMN, SEGMENT_COLUMN, N_COLUMN, N_UNFLAGGED_COLUMN]
-    columns.extend(
-        option_column(index, label)
-        for index, label in enumerate(table.option_labels, start=1)
-    )
-    columns.extend([TOP_BOX_COLUMN, MEAN_COLUMN])
-
-    rows: list[list[object]] = []
-    for row in table.rows:
-        metric = row.metric
-        values: list[object] = [
-            segment_axes.label(row.segment),
-            row.segment_value,
-            metric.n,
-            metric.n_unflagged,
-        ]
-        percentages = list(metric.percentages) or [None] * len(table.option_labels)
-        values.extend(format_percentage(value) for value in percentages)
-        values.append(format_percentage(metric.top_box))
-        values.append(format_mean(metric.mean))
-        rows.append(values)
-
-    return Table(
-        key=f"crosstab_{table.stimulus_id}_{table.measure}",
-        title=f"{table.stimulus_name}（{table.stimulus_id}） / {table.question_text}",
-        columns=tuple(columns),
-        rows=rows,
-        notes=table.notes,
-    )
-
-
-def concept_summary_table(
-    survey: SurveyDefinition,
-    rows: Sequence[ConceptSummaryRow],
-    *,
-    key: str,
-    title: str,
-    with_segment: bool,
-) -> Table:
-    """コンセプト比較表（§7.2）。コンセプトを表側、指標を表頭にする。"""
-    columns = ["コンセプト"]
-    if with_segment:
-        columns.extend([AXIS_COLUMN, SEGMENT_COLUMN])
-    columns.extend([N_COLUMN, N_UNFLAGGED_COLUMN])
-
-    questions = tabulated_measures(survey)
-    for question in questions:
-        columns.extend([f"{question.measure_key} T2B", f"{question.measure_key} 平均"])
-
-    body: list[list[object]] = []
-    for row in rows:
-        values: list[object] = [row.stimulus_name]
-        if with_segment:
-            values.extend([segment_axes.label(row.segment), row.segment_value])
-        values.extend([row.n, row.n_unflagged])
-        for question in questions:
-            top_box, mean = row.metrics.get(question.measure_key, (None, None))
-            values.extend([format_percentage(top_box), format_mean(mean)])
-        body.append(values)
-
-    notes = tuple(
-        f"{question.measure_key}: {question.text}" for question in questions
-    )
-    return Table(key=key, title=title, columns=tuple(columns), rows=body, notes=notes)
-
-
 # --------------------------------------------------------------------------- #
-# コンセプトを表側にしたクロス集計表
+# 集計表
 #
-# 表側＝セグメントの `crosstab_table()` を転置したもの。**集計はやり直さない。**
-# 材料は `compute_metric()` を通った `Crosstab` の値そのままで、ここでは並べ替えと
-# 表示用の整形しかしない。同じ数字が2通りに出る余地を作らないため。
+# **集計はやり直さない。** 材料は `compute_metric()` を通った `Crosstab` の値そのままで、
+# ここでは並べ替えと表示用の整形しかしない。表の形は2つだけ持つ——1 measure を
+# 選択肢ラベルつきで読む `concept_axis_table()` と、全設問を1枚に積む
+# `stacked_crosstab_table()`。同じ数字が何通りにも出る余地を作らないため。
 # --------------------------------------------------------------------------- #
 
 
