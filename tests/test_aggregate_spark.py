@@ -13,15 +13,8 @@ import csv
 
 import pytest
 
-from persona_sim.aggregate.aggregate import (
-    METRIC_MEAN,
-    METRIC_OPTION,
-    METRIC_TOP_BOX,
-    aggregate_survey,
-    read_aggregates,
-    result_from_aggregates,
-)
-from persona_sim.aggregate.export import CSV_ENCODING, FORMAT_XLSX, write_outputs
+from persona_sim.aggregate.aggregate import aggregate_survey
+from persona_sim.aggregate.export import CSV_ENCODING
 from persona_sim.config import StorageConfig
 from persona_sim.panel.build import build_panel
 from persona_sim.panel.loader import survey_from_dict
@@ -74,7 +67,7 @@ def _survey_dict(**overrides) -> dict:
     data["main_survey"]["model"]["concurrency"] = 8
     data["output"] = {
         "segments": ["total", "sex", "sex_x_age_band_10", "cell_id"],
-        "formats": ["delta", "csv", "xlsx"],
+        "formats": ["csv", "xlsx"],
     }
     data.update(overrides)
     return data
@@ -220,21 +213,26 @@ def test_report_xlsx_contains_a_sheet_per_table(aggregated):
 
 
 # --------------------------------------------------------------------------- #
-# `aggregates`（§2.5）
+# 集計の値が生データと合っていること
+#
+# 集計結果はテーブルに保存しないので、検査対象は `responses` から数え直した
+# `result.crosstabs`（`compute_metric()` を通った値そのもの）。
 # --------------------------------------------------------------------------- #
 
 
-def test_aggregates_match_the_raw_responses(spark, aggregated):
-    survey, storage, _, _ = aggregated
+def _metric(result, stimulus_id, measure, segment="total"):
+    table = next(
+        t for t in result.crosstabs if t.stimulus_id == stimulus_id and t.measure == measure
+    )
+    return next(row.metric for row in table.rows if row.segment == segment)
+
+
+def test_the_counts_match_the_raw_responses(spark, aggregated):
+    survey, storage, _, result = aggregated
     from pyspark.sql import functions as F
 
-    rows = read_aggregates(spark, survey, storage)
-    total = [
-        row
-        for row in rows
-        if row["segment"] == "total" and row["stimulus_id"] == "c1" and row["metric"] == METRIC_OPTION
-    ]
-    assert len(total) == 5
+    metric = _metric(result, "c1", "q_intent")
+    assert len(metric.percentages) == 5
 
     answered = (
         delta.read_table(spark, locator(RESPONSES, storage))
@@ -246,73 +244,28 @@ def test_aggregates_match_the_raw_responses(spark, aggregated):
         .filter(F.size(F.col("answer_codes")) > 0)
         .count()
     )
-    assert total[0]["n"] == answered
+    assert metric.n == answered
     # ウェイトが全て 1.0 なので、比率の合計は 1.0 になる。
-    assert sum(row["value"] for row in total) == pytest.approx(1.0)
+    assert sum(metric.percentages) == pytest.approx(1.0)
 
 
-def test_top_box_equals_the_sum_of_its_options(spark, aggregated):
-    survey, storage, _, _ = aggregated
-    rows = read_aggregates(spark, survey, storage)
+def test_top_box_equals_the_sum_of_its_options(aggregated):
+    _, _, _, result = aggregated
+    metric = _metric(result, "c1", "q_intent")
 
-    def pick(metric, **where):
-        return [
-            row
-            for row in rows
-            if row["metric"] == metric and all(row[k] == v for k, v in where.items())
-        ]
-
-    options = pick(METRIC_OPTION, segment="total", stimulus_id="c1")
-    top_two = sum(row["value"] for row in options if row["option_code"] in (1, 2))
-    top_box = pick(METRIC_TOP_BOX, segment="total", stimulus_id="c1")[0]
-    assert top_box["value"] == pytest.approx(top_two)
-
-    mean = pick(METRIC_MEAN, segment="total", stimulus_id="c1")[0]
-    assert 1.0 <= mean["value"] <= 5.0
+    top_two = sum(metric.percentages[:2])
+    assert metric.top_box == pytest.approx(top_two)
+    assert 1.0 <= metric.mean <= 5.0
 
 
-def test_reaggregating_does_not_duplicate_rows(spark, aggregated):
-    survey, storage, output_dir, _ = aggregated
-    before = len(read_aggregates(spark, survey, storage))
+def test_reaggregating_gives_the_same_numbers(spark, aggregated):
+    """毎回 `responses` から数え直すので、何度やっても同じ表になる。"""
+    survey, storage, output_dir, before = aggregated
 
-    aggregate_survey(spark, survey, storage, output_dir)
-    after = read_aggregates(spark, survey, storage)
+    after = aggregate_survey(spark, survey, storage, output_dir)
 
-    assert len(after) == before
-
-
-# --------------------------------------------------------------------------- #
-# `export`（§10.1）
-# --------------------------------------------------------------------------- #
-
-
-def test_export_rebuilds_the_report_from_aggregates_only(spark, aggregated, tmp_path):
-    """`responses` を読み直さずに、`aggregates` だけで同じ表に戻せること。"""
-    survey, storage, _, original = aggregated
-
-    rebuilt = result_from_aggregates(spark, survey, storage)
-    written = write_outputs(
-        spark, survey, storage, rebuilt, str(tmp_path), formats=(FORMAT_XLSX,)
-    )
-
-    assert [path.name for path in written] == ["report.xlsx"]
-
-    def crosstab_rows(result):
-        table = next(t for t in result.tables if t.key == "crosstab_q_intent")
-        return {(row[0], row[1], row[2]): row[3:] for row in table.rows}
-
-    assert crosstab_rows(rebuilt) == crosstab_rows(original)
-
-
-def test_export_without_aggregates_tells_you_to_run_aggregate(spark, personas_frame, tmp_path):
-    from persona_sim.errors import PersonaSimError
-
-    survey = survey_from_dict(_survey_dict())
-    storage = StorageConfig(warehouse=str(tmp_path / "empty"))
-    delta.write_table(personas_frame, locator(PERSONAS_BASE, storage))
-
-    with pytest.raises(PersonaSimError, match="aggregate"):
-        result_from_aggregates(spark, survey, storage)
+    assert after.answers == before.answers
+    assert [(t.key, t.rows) for t in after.tables] == [(t.key, t.rows) for t in before.tables]
 
 
 # --------------------------------------------------------------------------- #

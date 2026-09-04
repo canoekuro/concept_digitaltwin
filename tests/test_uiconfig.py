@@ -571,7 +571,7 @@ def test_built_survey_omits_output_formats(ui):
     """ジョブ側でファイルを書き出さない（調査定義の既定 delta のみになる）。"""
     data = build_survey_dict(ui, _form())
     assert "formats" not in data["output"]
-    assert build_survey(ui, _form()).output.formats == ("delta",)
+    assert build_survey(ui, _form()).output.formats == ("csv", "xlsx")
 
 
 def test_non_infer_screening_omits_the_judge_settings(ui):

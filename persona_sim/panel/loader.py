@@ -877,7 +877,8 @@ def _output(source: Any) -> OutputConfig:
     _reject_unknown(mapping, ("segments", "formats"), path)
     return OutputConfig(
         segments=_opt_str_tuple(mapping.get("segments"), f"{path}.segments") or ("total",),
-        formats=_opt_str_tuple(mapping.get("formats"), f"{path}.formats") or ("delta",),
+        formats=_opt_str_tuple(mapping.get("formats"), f"{path}.formats")
+        or OutputConfig().formats,
     )
 
 

@@ -35,7 +35,7 @@ _BASE: dict[str, Any] = {
         "rotation": "none",
     },
     "main_survey": {"model": {"endpoint": "fake", "deployment": "test-deployment"}},
-    "output": {"segments": ["total"], "formats": ["delta"]},
+    "output": {"segments": ["total"], "formats": ["csv"]},
 }
 
 

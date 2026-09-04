@@ -815,7 +815,8 @@ class ModelConfig:
 @dataclass(frozen=True)
 class OutputConfig:
     segments: tuple[str, ...] = ("total",)
-    formats: tuple[str, ...] = ("delta",)
+    #: 既定でファイルを出す。集計結果はテーブルに保存しないので、書かないと何も残らない。
+    formats: tuple[str, ...] = ("csv", "xlsx")
 
 
 @dataclass(frozen=True)

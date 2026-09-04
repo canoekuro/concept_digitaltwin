@@ -382,7 +382,7 @@ def test_composite_segment_axis_is_accepted():
 
 def test_unknown_output_format_stops_validation():
     data = base_survey_dict()
-    data["output"]["formats"] = ["delta", "pdf"]
+    data["output"]["formats"] = ["csv", "pdf"]
     report = validate_static(survey_from_dict(data))
 
     assert not report.ok
@@ -393,7 +393,7 @@ def test_sample_survey_output_settings_pass():
     data = base_survey_dict()
     data["output"] = {
         "segments": ["total", "sex", "age_band_10", "sex_x_age_band_10", "cell_id"],
-        "formats": ["delta", "csv", "xlsx"],
+        "formats": ["csv", "xlsx"],
     }
     assert validate_static(survey_from_dict(data)).ok
 

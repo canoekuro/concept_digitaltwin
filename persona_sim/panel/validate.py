@@ -727,7 +727,7 @@ def _check_output(survey: SurveyDefinition, report: ValidationReport) -> None:
     軸が黙って無視されると、集計表からその軸が消えたことに実行後まで気づけない。
     """
     from persona_sim.aggregate import segments as segment_axes
-    from persona_sim.aggregate.export import FORMAT_CSV, FORMAT_DELTA, FORMAT_XLSX
+    from persona_sim.aggregate.export import FORMAT_CSV, FORMAT_XLSX
 
     for segment in survey.output.segments:
         unknown = segment_axes.unknown_axes(segment)
@@ -740,7 +740,7 @@ def _check_output(survey: SurveyDefinition, report: ValidationReport) -> None:
                 f"（例: sex{segment_axes.COMPOSITE_SEPARATOR}age_band_10）",
             )
 
-    known_formats = (FORMAT_DELTA, FORMAT_CSV, FORMAT_XLSX)
+    known_formats = (FORMAT_CSV, FORMAT_XLSX)
     for output_format in survey.output.formats:
         if output_format not in known_formats:
             report.error(

@@ -43,7 +43,6 @@ _MAX_SHEET_NAME = 31
 
 FORMAT_CSV = "csv"
 FORMAT_XLSX = "xlsx"
-FORMAT_DELTA = "delta"
 
 
 def write_outputs(

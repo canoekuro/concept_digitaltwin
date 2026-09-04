@@ -18,7 +18,6 @@ RESPONSES = "responses"
 #: スクリーニングの生データ（§2.6）。`responses` とは分けて持つ。
 SCREENER_RESPONSES = "screener_responses"
 RUNS = "runs"
-AGGREGATES = "aggregates"
 
 
 @dataclass(frozen=True)

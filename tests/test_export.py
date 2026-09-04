@@ -9,13 +9,7 @@ import csv
 
 import pytest
 
-from persona_sim.aggregate.aggregate import (
-    METRIC_MEAN,
-    METRIC_OPTION,
-    METRIC_TOP_BOX,
-    AggregateResult,
-    aggregate_rows,
-)
+from persona_sim.aggregate.aggregate import AggregateResult
 from persona_sim.aggregate.crosstab import Answer, concept_summary, crosstabs
 from persona_sim.aggregate.export import (
     CSV_ENCODING,
@@ -215,48 +209,6 @@ def test_stacked_table_notes_carry_the_option_legend(survey_dict):
     legend = next(note for note in table.notes if note.startswith("q_intent の選択肢"))
     assert "1. ぜひ" in legend
     assert "5. まったく" in legend
-
-
-# --------------------------------------------------------------------------- #
-# `aggregates` のロング行（§2.5）
-# --------------------------------------------------------------------------- #
-
-
-def test_aggregate_rows_hold_raw_values(survey_dict):
-    survey = survey_from_dict(survey_dict)
-    rows = aggregate_rows(_result(survey))
-    columns = (
-        "survey_id stimulus_id question_id segment segment_value n n_unflagged "
-        "metric option_code option_label value"
-    ).split()
-    keyed = [dict(zip(columns, row, strict=True)) for row in rows]
-
-    total_options = [
-        row
-        for row in keyed
-        if row["metric"] == METRIC_OPTION
-        and row["segment"] == "total"
-        and row["stimulus_id"] == "c1"
-    ]
-    assert len(total_options) == 5
-    assert total_options[0]["value"] == pytest.approx(0.5)
-    assert total_options[0]["option_label"] == "ぜひ"
-
-    top_box = next(
-        row for row in keyed if row["metric"] == METRIC_TOP_BOX and row["segment"] == "total"
-    )
-    assert top_box["value"] == pytest.approx(0.75)
-    mean = next(row for row in keyed if row["metric"] == METRIC_MEAN and row["segment"] == "total")
-    assert mean["value"] == pytest.approx(3.75)
-
-
-def test_aggregate_rows_cover_every_segment(survey_dict):
-    survey = survey_from_dict(survey_dict)
-    rows = aggregate_rows(_result(survey))
-    segments = {row[3] for row in rows}
-    values = {row[4] for row in rows}
-    assert segments == {"total", "sex"}
-    assert {"全体", "男", "女"} <= values
 
 
 # --------------------------------------------------------------------------- #

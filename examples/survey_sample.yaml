@@ -296,4 +296,4 @@ main_survey:
 
 output:
   segments: ["total", "sex", "age_band_10", "sex_x_age_band_10", "cell_id"]
-  formats: ["delta", "csv", "xlsx"]
+  formats: ["csv", "xlsx"]
