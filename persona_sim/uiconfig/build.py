@@ -1,7 +1,7 @@
 """画面入力と UI 設定から調査定義を組み立てる（`docs/SPEC_UI.md` §4）。
 
 ```
-config/ui_config.yaml ─┐
+app/config/ui_config.yaml ─┐
                        ├→ build_survey() → 調査定義（§3）→ panel → screen → run → aggregate
 画面入力（SurveyForm）─┘
 ```
@@ -221,7 +221,3 @@ def survey_id(name: str, now: datetime | None = None) -> str:
     suffix = secrets.token_hex(_ID_SUFFIX_BYTES)
     return f"{slug}_{stamp}_{suffix}" if slug else f"survey_{stamp}_{suffix}"
 
-
-def default_form_questions(ui: UIConfig) -> tuple[Mapping[str, Any], ...]:
-    """画面の設問フォームの初期値。編集させるので複製を返す。"""
-    return tuple(dict(question) for question in ui.default_questions)

@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from persona_sim.aggregate import segments as segment_axes
 from persona_sim.aggregate.crosstab import Answer, to_defined_codes
+from persona_sim.aggregate.rawdata import scalar_cell
 from persona_sim.config import StorageConfig
 from persona_sim.errors import PersonaSimError
 from persona_sim.panel.sampling import ROLE_MAIN
@@ -129,7 +130,7 @@ def stream_responses_raw(
 
     def rows() -> Iterator[list[Any]]:
         for row in responses.toLocalIterator():
-            yield [_scalar(row[name]) for name in RESPONSES_SCHEMA_COLUMNS]
+            yield [scalar_cell(row[name]) for name in RESPONSES_SCHEMA_COLUMNS]
 
     return RESPONSES_SCHEMA_COLUMNS, rows()
 
@@ -219,9 +220,3 @@ def _to_number(text: str | None) -> float | None:
     except ValueError:
         return None
 
-
-def _scalar(value: Any) -> Any:
-    """CSV に書ける形へ。配列は `|` 区切りに潰す。"""
-    if isinstance(value, (list, tuple)):
-        return "|".join(str(item) for item in value)
-    return value

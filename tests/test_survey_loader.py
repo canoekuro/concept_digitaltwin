@@ -49,26 +49,6 @@ def test_design_defaults_are_counterfactual_monadic():
     assert all(not q.remember.retains for q in survey.questions)
 
 
-@pytest.mark.parametrize(
-    ("removed_field", "value", "expected_hint"),
-    [
-        ("type", "sequential_monadic", "sample_overlap"),
-        ("balance_within_cell", True, "sample_overlap"),
-        # 記憶は設問側へ移したので、案内が指す先も design ではなく questions になる。
-        ("memory", "full_session", "questions[].remember"),
-    ],
-)
-def test_removed_design_fields_are_rejected_with_migration_hint(
-    removed_field, value, expected_hint
-):
-    """廃止した design のフィールドは黙って無視せず、書き換え先を添えて止める（§5.4）。"""
-    data = base_survey_dict()
-    data["design"][removed_field] = value
-    with pytest.raises(SurveyDefinitionError) as excinfo:
-        survey_from_dict(data)
-    message = str(excinfo.value)
-    assert removed_field in message
-    assert expected_hint in message  # 移行先を示していること
 
 
 def test_removed_model_temperature_is_rejected_with_migration_hint():
@@ -102,99 +82,20 @@ def test_removed_infer_model_temperature_is_rejected_with_migration_hint():
     assert "廃止" in message
 
 
-def test_old_job_key_is_rejected_with_migration_hint():
-    """旧 job: を黙って読まない。読めてしまうと用語が二重に残る。"""
-    data = base_survey_dict()
-    data["job"] = data.pop("survey")
-    with pytest.raises(SurveyDefinitionError) as excinfo:
-        survey_from_dict(data)
-    message = str(excinfo.value)
-    assert "survey:" in message
-    assert "survey_id" in message  # 列名も変わったことを伝えていること
 
 
-# --------------------------------------------------------------------------- #
-# screening: / main_survey: への再編成（issue 202607301208 項目5）
-#
-# 旧構造を黙って無視すると「設定したのに効いていない」ことに実行後まで気づけない。
-# 移行先を必ず添えて停止すること。移行の各パターンに1件ずつ対応させている。
-# --------------------------------------------------------------------------- #
 
 
-def test_old_top_level_model_is_rejected_with_migration_hint():
-    data = base_survey_dict()
-    data["model"] = data["main_survey"].pop("model")
-    with pytest.raises(SurveyDefinitionError) as excinfo:
-        survey_from_dict(data)
-    assert "main_survey.model" in str(excinfo.value)
 
 
-def test_old_top_level_prompt_is_rejected_with_migration_hint():
-    data = base_survey_dict()
-    data["prompt"] = {"system": "あなたは架空の人物です。"}
-    with pytest.raises(SurveyDefinitionError) as excinfo:
-        survey_from_dict(data)
-    message = str(excinfo.value)
-    assert "main_survey.prompt" in message
-    # 中身が3つに分かれることまで伝える（persona_fields と infer_system の行き先）。
-    assert "main_survey.persona_card.persona_fields" in message
-    assert "screening.prompt.system" in message
 
 
-def test_old_panel_screener_is_rejected_with_migration_hint():
-    data = base_survey_dict()
-    data["panel"]["screener"] = {"mode": "assume", "conditions": ["コーヒーを飲む"]}
-    with pytest.raises(SurveyDefinitionError) as excinfo:
-        survey_from_dict(data)
-    message = str(excinfo.value)
-    assert "screening:" in message
-    assert "screening.batch_size" in message  # infer.* の行き先も伝えていること
 
 
-def test_old_prompt_persona_fields_is_rejected_with_migration_hint():
-    data = base_survey_dict()
-    data["main_survey"]["prompt"] = {
-        "persona_fields": [{"field": "cultural_background", "label": "生活背景"}]
-    }
-    with pytest.raises(SurveyDefinitionError) as excinfo:
-        survey_from_dict(data)
-    assert "main_survey.persona_card.persona_fields" in str(excinfo.value)
 
 
-def test_old_prompt_infer_system_is_rejected_with_migration_hint():
-    data = base_survey_dict()
-    data["main_survey"]["prompt"] = {"infer_system": "あなたは選定担当です。"}
-    with pytest.raises(SurveyDefinitionError) as excinfo:
-        survey_from_dict(data)
-    assert "screening.prompt.system" in str(excinfo.value)
 
 
-def test_old_prompt_rules_infer_is_rejected_with_migration_hint():
-    """`rules.infer` は設問タイプではないのでスクリーニング側へ移した。"""
-    data = base_survey_dict()
-    data["main_survey"]["prompt"] = {"rules": {"infer": "番号を挙げてください。"}}
-    with pytest.raises(SurveyDefinitionError) as excinfo:
-        survey_from_dict(data)
-    assert "screening.prompt.rule" in str(excinfo.value)
-
-
-@pytest.mark.parametrize("where", ["main_survey", "screening"])
-def test_removed_include_attributes_is_rejected_with_migration_hint(where):
-    """真偽値は廃止し attributes: のリストに寄せた。本調査・判定の両方で。"""
-    data = base_survey_dict()
-    if where == "main_survey":
-        data["main_survey"]["persona_card"] = {"include_attributes": False}
-    else:
-        data["screening"] = {
-            "mode": "infer",
-            "conditions": ["コーヒーを飲む"],
-            "persona_card": {"include_attributes": False},
-        }
-    with pytest.raises(SurveyDefinitionError) as excinfo:
-        survey_from_dict(data)
-    message = str(excinfo.value)
-    assert "attributes" in message
-    assert "廃止" in message
 
 
 def test_new_structure_round_trips():
@@ -239,11 +140,12 @@ def test_unsupported_question_types_are_rejected(question_type):
 
 
 def test_unknown_enum_value_lists_allowed_values():
+    """綴りを間違えたとき、書ける値が読み取れること。"""
     data = base_survey_dict()
-    data["design"]["memory"] = "forever"
+    data["design"]["sample_overlap"] = "forever"
     with pytest.raises(SurveyDefinitionError) as excinfo:
         survey_from_dict(data)
-    assert "within_stimulus" in str(excinfo.value)
+    assert "disjoint" in str(excinfo.value)
 
 
 def test_count_mode_requires_n():
@@ -326,19 +228,6 @@ def test_prompt_overrides_are_loaded():
     assert prompt.rules.single == "1つだけ番号で答えよ。"
 
 
-def test_removed_prompt_template_version_is_rejected_with_migration_hint():
-    """廃止した prompt.template_version は黙って無視しない（§6.1）。
-
-    無視できてしまうと「版管理をしているつもり」が残り、実際には管理していないことに
-    気づけない。
-    """
-    data = base_survey_dict()
-    data["main_survey"]["prompt"] = {"template_version": "v2"}
-    with pytest.raises(SurveyDefinitionError) as excinfo:
-        survey_from_dict(data)
-    message = str(excinfo.value)
-    assert "prompt.template_version" in message
-    assert "廃止" in message
 
 
 def test_prompt_overrides_keep_defaults_for_omitted_keys():
@@ -557,20 +446,6 @@ def test_survey_type_is_kept_in_raw_for_the_run_record():
     assert survey_from_dict(data).raw["survey"]["type"] == "concept"
 
 
-def test_removed_question_scale_points_is_rejected_with_migration_hint():
-    """廃止した questions[].scale_points は黙って無視しない。
-
-    読み込みも検証もしていたのにプロンプトにも集計にも効いておらず、
-    「尺度の点数を設定したつもり」だけが残っていた。選択肢の数は options の長さで決まる。
-    """
-    data = base_survey_dict()
-    data["questions"][0]["scale_points"] = 5
-    with pytest.raises(SurveyDefinitionError) as excinfo:
-        survey_from_dict(data)
-    message = str(excinfo.value)
-    assert "scale_points" in message
-    assert "廃止" in message
-    assert "options" in message  # 代わりに何を見ているかを伝えていること
 
 
 def test_omitted_model_and_screening_defaults_match_the_dataclass_defaults():
@@ -787,9 +662,11 @@ def test_record_reads_the_screening_mode_from_the_old_place():
         ],
     }
 
-    with pytest.raises(SurveyDefinitionError, match="panel.screener"):
+    # これから実行する定義としては受け付けない（`screening:` の直下に書く）。
+    with pytest.raises(SurveyDefinitionError, match="未知のキー screener"):
         survey_from_dict(data)
 
+    # 記録は事実で、書き直させる相手がいない。旧レイアウトのまま読めること。
     screening = survey_from_record(data).screening
     assert screening is not None
     assert screening.asks is True

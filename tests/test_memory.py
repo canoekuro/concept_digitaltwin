@@ -305,15 +305,6 @@ def test_mismatched_top_box_under_one_measure_is_rejected():
     assert "E6" in _codes(report.errors)
 
 
-def test_the_discontinued_memory_setting_is_rejected_with_a_migration_hint():
-    """`design.memory` は廃止した。黙って無視すると「設定したつもり」が残る。"""
-    data = base_survey_dict()
-    data["design"]["memory"] = "full_session"
-
-    with pytest.raises(SurveyDefinitionError, match="remember"):
-        survey_from_dict(data)
-
-
 def test_an_out_of_range_slot_fails_legibly_at_run_time():
     """`run` は `validate` を通らずに実行できるので、範囲外の slot をここでも止める。
 

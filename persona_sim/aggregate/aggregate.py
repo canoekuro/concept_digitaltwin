@@ -232,14 +232,6 @@ def _build_tables(
     return tables
 
 
-def panel_composition_table(
-    spark: SparkSession, survey: SurveyDefinition, storage: StorageConfig
-) -> Table:
-    """実際のパネル構成とインシデンス（§7.4 `panel_composition.csv`）。"""
-    return panel_composition_table_from_rows(
-        survey, frame.load_panel_rows(spark, survey, storage)
-    )
-
 
 def panel_composition_table_from_rows(
     survey: SurveyDefinition, panel_rows: Sequence[Mapping[str, Any]]

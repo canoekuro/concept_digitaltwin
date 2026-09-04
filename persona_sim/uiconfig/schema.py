@@ -4,7 +4,7 @@
 
 | 層 | 何が入るか | どこから来るか |
 |---|---|---|
-| `UIConfig` | 調査をまたいで変わらないもの（本調査とスクリーニングのモデル・プロンプト・ペルソナカード、既定設問、割り付けパターン、見積もり実績値） | `config/ui_config.yaml` |
+| `UIConfig` | 調査をまたいで変わらないもの（本調査とスクリーニングのモデル・プロンプト・ペルソナカード、既定設問、割り付けパターン、見積もり実績値） | `app/config/ui_config.yaml` |
 | `SurveyForm` | 1調査ごとに変わるもの（調査名・N数・年齢範囲・対象者条件・コンセプト・設問） | 画面入力 |
 
 `UIConfig` 自身も**最上位で2群に分かれる**。`survey_defaults` はそのまま調査定義に
@@ -147,7 +147,7 @@ class MainSurveyDefaults:
 
 @dataclass(frozen=True)
 class UIConfig:
-    """`config/ui_config.yaml` の中身。
+    """`app/config/ui_config.yaml` の中身。
 
     **最上位は2群に分かれている。**
 

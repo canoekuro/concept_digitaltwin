@@ -109,27 +109,19 @@ def test_unknown_key_is_rejected():
 
 
 @pytest.mark.parametrize(
-    ("moved", "destination"),
-    [
-        ("model", "survey_defaults.main_survey.model"),
-        ("prompt", "survey_defaults.main_survey.prompt"),
-        ("default_questions", "survey_defaults.questions"),
-        ("screener", "survey_defaults.screening"),
-        ("allocation", "ui.allocation_patterns"),
-        ("output", "survey_defaults.output"),
-        ("estimation_benchmarks", "ui.estimation_benchmarks"),
-    ],
+    "stray",
+    ["model", "prompt", "default_questions", "screener", "allocation", "estimation_benchmarks"],
 )
-def test_old_flat_keys_are_rejected_with_migration_hint(moved, destination):
-    """旧構造（最上位にべた並び）を黙って読まない（issue 202607301208 項目2）。
+def test_keys_outside_the_two_groups_are_rejected(stray):
+    """最上位に置けるのは survey_defaults と ui だけ（issue 202607301208 項目2）。
 
-    無視できてしまうと、設定を書いたのに既定で走ってしまう。
+    黙って無視できてしまうと、設定を書いたのに既定で走ってしまう。
     """
     data = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
-    data[moved] = {}
+    data[stray] = {}
     with pytest.raises(UIConfigError) as excinfo:
         ui_config_from_dict(data)
-    assert destination in str(excinfo.value)
+    assert stray in str(excinfo.value)
 
 
 def test_config_is_split_into_survey_defaults_and_ui():
@@ -170,20 +162,6 @@ def test_missing_pricing_is_rejected():
     del data["ui"]["estimation_benchmarks"]["pricing"]
     with pytest.raises(UIConfigError, match="input_usd_per_million"):
         ui_config_from_dict(data)
-
-
-def test_old_survey_session_key_is_rejected_with_unit_change():
-    """旧キーを黙って読まない。単位が1セッション→1回答に変わっている（下記参照）。
-
-    素通りさせると、桁は合っているのに記憶を持つ調査で過小に出る見積もりになる。
-    """
-    data = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
-    benchmarks = data["ui"]["estimation_benchmarks"]
-    benchmarks["survey_session"] = benchmarks.pop("survey_answer")
-    with pytest.raises(UIConfigError) as excinfo:
-        ui_config_from_dict(data)
-    assert "survey_answer" in str(excinfo.value)
-    assert "1回答あたり" in str(excinfo.value)
 
 
 def test_old_latency_key_is_rejected_with_migration_hint():

@@ -1,6 +1,6 @@
 """コンセプト調査 Web UI の設定層（`docs/SPEC_UI.md`）。
 
-`config/ui_config.yaml`（調査横断の固定設定）と画面入力を合成して、調査定義
+`app/config/ui_config.yaml`（調査横断の固定設定）と画面入力を合成して、調査定義
 （`SPEC_PHASE1.md` §3）を作る。**パネル構築・回答生成・集計のロジックは持たない。**
 作った調査定義を既存の実行経路（`panel` → `screen` → `run` → `aggregate`）に渡すだけ。
 

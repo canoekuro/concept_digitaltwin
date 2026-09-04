@@ -57,7 +57,7 @@ def labelled_csv_rows(
             row.get("answer_codes"),
             row.get("options_order"),
         )
-        body.append([_scalar(enriched.get(name)) for name in columns])
+        body.append([scalar_cell(enriched.get(name)) for name in columns])
     return columns, body
 
 
@@ -98,8 +98,13 @@ def _columns(original: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(columns)
 
 
-def _scalar(value: Any) -> Any:
-    """CSV・xlsx に書ける形へ。配列は `|` 区切りに潰す。"""
+def scalar_cell(value: Any) -> Any:
+    """CSV・xlsx に書ける1セルの値へ。配列は `LABEL_SEPARATOR` 区切りに潰す。
+
+    ローデータ（`labelled_csv_rows`）と `responses_raw.csv`（`frame.stream_responses_raw`）
+    の両方が通る。**潰し方を二重に実装しない**——区切りがずれると、同じ回答が
+    ダウンロードした2つのファイルで違う文字列になる。
+    """
     if isinstance(value, (list, tuple)):
         return LABEL_SEPARATOR.join(str(item) for item in value)
     return value

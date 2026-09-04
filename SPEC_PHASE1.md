@@ -1172,12 +1172,12 @@ Databricks ノートブックから同じ関数群を呼べること。調査定
 
 設定は**2層**にする。調査をまたいで変わらないもの（本調査とスクリーニングのモデル・
 プロンプト・ペルソナカード、既定設問、割り付けパターン、見積もり用のベンチマーク）は
-`config/ui_config.yaml`。1調査ごとに変わるもの（調査名・N数・年齢範囲・対象者条件・
+`app/config/ui_config.yaml`。1調査ごとに変わるもの（調査名・N数・年齢範囲・対象者条件・
 コンセプト・設問）は画面入力。両者を `persona_sim.uiconfig.build_survey()` が合成して
 調査定義（§3）を作る。
 結果の読み取りは SQL Warehouse 経由（`persona_sim.storage.warehouse`）で、Spark を使わない。
 
-`config/ui_config.yaml` 自身も最上位で2群に分ける。`survey_defaults` はそのまま調査定義に
+`app/config/ui_config.yaml` 自身も最上位で2群に分ける。`survey_defaults` はそのまま調査定義に
 なるもの、`ui` は画面を描くためだけのもの。混ざっていると、設定を変えたときに調査結果が
 変わるのか画面の見た目が変わるのかを読み分けられない（`docs/SPEC_UI.md` §2）。
 

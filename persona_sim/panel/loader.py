@@ -19,18 +19,9 @@ import yaml
 from persona_sim.errors import SurveyDefinitionError
 from persona_sim.panel.schema import (
     DEFAULT_REASONING_MAX_LENGTH,
-    FLAT_REASONING_RULE,
-    LEGACY_QUESTIONS_WITHOUT_SLOT,
     MISPLACED_SCREENER_KEYS,
-    MOVED_PANEL_FIELDS,
-    MOVED_PROMPT_RULE_FIELDS,
     NO_MEMORY,
-    REMOVED_DESIGN_FIELDS,
     REMOVED_MODEL_FIELDS,
-    REMOVED_PERSONA_CARD_FIELDS,
-    REMOVED_PROMPT_FIELDS,
-    REMOVED_QUESTION_FIELDS,
-    RENAMED_TOP_LEVEL_KEYS,
     UNSUPPORTED_QUESTION_TYPES,
     UNUSED_INFER_SCREENER_KEYS,
     Design,
@@ -95,10 +86,6 @@ def load_survey(path: str | Path) -> SurveyDefinition:
 
 def survey_from_dict(data: Mapping[str, Any]) -> SurveyDefinition:
     """dict から調査定義を組み立てる（ノートブックからの利用: §10.2）。"""
-    for renamed, hint in RENAMED_TOP_LEVEL_KEYS.items():
-        if renamed in data:
-            raise SurveyDefinitionError(hint)
-
     _reject_unknown(
         data,
         (
@@ -201,7 +188,8 @@ def survey_from_record(record: Mapping[str, Any]) -> SurveyDefinition:
         survey_id=_str(survey, "id", "survey.id"),
         name=_str(survey, "name", "survey.name"),
         survey_type=_enum(SurveyType, survey.get("type", SurveyType.CONCEPT), "survey.type"),
-        panel=_panel({key: value for key, value in panel.items() if key not in MOVED_PANEL_FIELDS}),
+        # 記録には `panel.screener:` 時代のものが残る。書き直させる相手がいないので落として読む。
+        panel=_panel({key: value for key, value in panel.items() if key != "screener"}),
         stimuli=tuple(
             _stimulus(item, f"stimuli[{i}]")
             for i, item in enumerate(_sequence(record, "stimuli", "stimuli"))
@@ -240,9 +228,6 @@ def _record_screening(source: Any, path: str) -> ScreeningConfig | None:
 
 
 def _panel(panel: Mapping[str, Any]) -> PanelConfig:
-    for moved, hint in MOVED_PANEL_FIELDS.items():
-        if moved in panel:
-            raise SurveyDefinitionError(f"panel.{moved}: {hint}")
     _reject_unknown(panel, ("size", "seed", "quotas", "filters"), "panel")
     quotas = _mapping(panel, "quotas", "panel.quotas")
     _reject_unknown(quotas, ("mode", "cells"), "panel.quotas")
@@ -315,9 +300,6 @@ def _screening(source: Any) -> ScreeningConfig:
     """
     path = "screening"
     mapping = _as_mapping(source, path)
-    for moved, hint in MOVED_PANEL_FIELDS.items():
-        if moved in mapping:
-            raise SurveyDefinitionError(f"{path}.{moved}: {hint}")
     _reject_unknown(
         mapping,
         (
@@ -399,9 +381,6 @@ def _persona_card(source: Any, path: str, defaults: PersonaCardConfig) -> Person
     if source is None:
         return defaults
     mapping = _as_mapping(source, path)
-    for removed, hint in REMOVED_PERSONA_CARD_FIELDS.items():
-        if removed in mapping:
-            raise SurveyDefinitionError(f"{path}.{removed}: {hint}")
     _reject_unknown(mapping, ("attributes", "include_summary", "persona_fields"), path)
 
     raw_attributes = mapping.get("attributes")
@@ -511,9 +490,6 @@ def _stimulus(item: Any, path: str) -> Stimulus:
 def _design(source: Any) -> Design:
     path = "design"
     mapping = _as_mapping(source, path)
-    for removed, hint in REMOVED_DESIGN_FIELDS.items():
-        if removed in mapping:
-            raise SurveyDefinitionError(hint)
     _reject_unknown(
         mapping,
         ("sample_overlap", "presentation", "stimuli_per_persona", "rotation"),
@@ -535,9 +511,6 @@ def _design(source: Any) -> Design:
 
 def _question(item: Any, path: str) -> Question:
     mapping = _as_mapping(item, path)
-    for removed, hint in REMOVED_QUESTION_FIELDS.items():
-        if removed in mapping:
-            raise SurveyDefinitionError(f"{path}.{removed}: {hint}")
     _reject_unknown(
         mapping,
         (
@@ -617,7 +590,6 @@ def _reject_unusable_questions(
         # stimuli_per_persona の欠落。E6 として validate が扱うので、ここでは判定しない。
         return
 
-    _reject_legacy_questions(per_persona, question_items)
     _reject_uncovered_slots(per_persona, questions)
 
 
@@ -683,27 +655,6 @@ def _reject_uncovered_slots(per_persona: int, questions: Sequence[Question]) -> 
             f"1〜{per_persona} のすべての slot に設問を書くこと"
         )
 
-
-def _reject_legacy_questions(per_persona: int, question_items: Sequence[Any]) -> None:
-    """`slot` の無い旧形式を、m > 1 のときだけ停止させる（§11 E6）。
-
-    旧形式では `questions` が全コンセプトに繰り返された。`slot` の既定 1 で黙って読むと
-    2つ目以降のコンセプトが聞かれずに消え、**同じ調査定義で結果の意味が変わる**。
-
-    m == 1（`disjoint`、またはコンセプト1件）なら旧形式と新形式で展開が一致するので、
-    そのまま読んでよい。
-
-    `_reject_uncovered_slots()` より先に呼ぶ。どちらも同じ状態を捕まえるが、
-    旧形式には「全展開して書き直す」という別の案内が要る。
-    """
-    if per_persona <= 1:
-        return
-    if any("slot" in _as_mapping(item, "questions") for item in question_items):
-        return
-    raise SurveyDefinitionError(
-        f"questions: 1ペルソナが {per_persona} 件のコンセプトを評価する設計だが、"
-        f"どの設問にも slot が書かれていない。{LEGACY_QUESTIONS_WITHOUT_SLOT}"
-    )
 
 
 def _remember(value: Any, path: str) -> Remember:
@@ -801,9 +752,6 @@ def _model(mapping: Mapping[str, Any], path: str = "main_survey.model") -> Model
 
 def _prompt(source: Any, path: str = "main_survey.prompt") -> PromptConfig:
     mapping = _as_mapping(source, path)
-    for removed, hint in REMOVED_PROMPT_FIELDS.items():
-        if removed in mapping:
-            raise SurveyDefinitionError(f"{path}.{removed}: {hint}")
     _reject_unknown(mapping, ("system", "headings", "rules", "systems"), path)
 
     defaults = PromptConfig()
@@ -863,9 +811,6 @@ def _prompt_rules(source: Any, path: str) -> PromptRules:
     if source is None:
         return defaults
     mapping = _as_mapping(source, path)
-    for moved, hint in MOVED_PROMPT_RULE_FIELDS.items():
-        if moved in mapping:
-            raise SurveyDefinitionError(f"{path}.{moved}: {hint}")
     keys = tuple(defaults.__dataclass_fields__)
     _reject_unknown(mapping, keys, path)
 
@@ -887,14 +832,17 @@ def _prompt_rules(source: Any, path: str) -> PromptRules:
 def _reasoning_rules(source: Any, path: str) -> ReasoningRules:
     """`reasoning: true` の設問の指示行。**設問タイプごと**に書く（§6.3）。
 
-    1本の文で書いていた旧形式は読まずに停止する。全タイプで使い回すと、設問タイプの
-    指示行を置き換えたときにそのタイプ固有の指示が落ちる（`FLAT_REASONING_RULE`）。
+    1本の文を全タイプで使い回す形は受けない。設問タイプの指示行を置き換えたときに
+    そのタイプ固有の指示が落ちる——`multi` の「すべて、カンマ区切りで」が消え、
+    複数回答なのに1つだけ選ばせる問いになる。
     """
     defaults = ReasoningRules()
     if source is None:
         return defaults
     if isinstance(source, str):
-        raise SurveyDefinitionError(f"{path}: {FLAT_REASONING_RULE}")
+        raise SurveyDefinitionError(
+            f"{path}: 1本の文ではなく、single / scale / multi の入れ子で書くこと（§6.3）。"
+        )
     mapping = _as_mapping(source, path)
     keys = tuple(defaults.__dataclass_fields__)
     _reject_unknown(mapping, keys, path)
