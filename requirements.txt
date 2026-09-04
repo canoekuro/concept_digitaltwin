@@ -1,0 +1,16 @@
+# Databricks Apps のコンテナに入れる依存。
+#
+# **このファイルがアプリ用なのは Apps の都合。** Apps はソースコードパスのルートにある
+# requirements.txt を install する。ソースパスはリポジトリ直下（app.yaml の場所）なので、
+# ここがアプリの依存定義になる。パイプライン実行基盤の依存は requirements-pipeline.txt。
+#
+# **pyspark を入れない。** Apps は Spark ドライバを持たない軽量コンテナで、
+# 結果の読み取りは SQL Warehouse 経由で行う（docs/SPEC_UI.md §4）。
+#
+# persona_sim 自体はここに書かない。ソースが同期されるので、
+# app/lib/__init__.py が sys.path を通してリポジトリ内のものを直接 import する。
+streamlit>=1.40
+databricks-sdk>=0.72
+databricks-sql-connector>=3.0
+PyYAML>=6.0
+openpyxl>=3.1

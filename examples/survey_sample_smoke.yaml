@@ -1,0 +1,74 @@
+# run_survey.ipynb を単体（アプリ非経由）で動作確認するための最小サンプル。
+#
+# Unity Catalog Volumes に置いて使う（例）:
+#   /Volumes/<catalog>/<schema>/<surveys-volume>/survey_sample_smoke.yaml
+#
+# 本番規模の examples/survey_sample.yaml と違い、
+# - model.endpoint: fake なので実エンドポイント不要・課金されない
+# - panel.size を10人に抑え、screener.mode: assume で判定の LLM 呼び出しも無い
+# ため、`validate → panel → screen → run → aggregate → metadata` を素早く通せる。
+# deploy/README.md の「ノートブック単体の動作確認」を参照。
+#
+# main_survey.prompt: と main_survey.persona_card: は意図的に省略している。fake エンドポイントは
+# LLM を呼ばずプロンプト内容が実行結果に影響しないため（config/ui_config.yaml の内容を書き写す
+# survey_sample.yaml とは方針が異なる）。
+
+survey:
+  id: "smoke_test_rtd"
+  name: "RTD新コンセプト評価（スモークテスト）"
+  type: "concept"
+
+panel:
+  size: 10
+  seed: 42
+  quotas:
+    mode: "count"
+    cells:
+      - {cell_id: "M_20_40s", sex: "男", age_min: 20, age_max: 49, n: 5}
+      - {cell_id: "F_20_40s", sex: "女", age_min: 20, age_max: 49, n: 5}
+  filters:
+    age_min: 20          # 酒類カテゴリなので未成年を含めない
+
+# 聞かずに前提として与える（費用0・LLM 呼び出しなし）
+screening:
+  mode: "assume"
+  conditions:
+    - "缶チューハイ・缶ハイボールを月1回以上飲む"
+
+stimuli:
+  - id: "c1"
+    name: "コンセプトA"
+    text: |
+      【商品名】ゆずハイボール
+      【特徴】国産ゆず果汁を使った、甘さ控えめの缶ハイボール。アルコール5%。
+      【価格】希望小売価格 205円（350ml）
+
+design:
+  sample_overlap: "same"
+  presentation: "sequential"
+  rotation: "none"
+
+questions:
+  - id: "q_intent"
+    text: "この商品を購入したいと思いますか。"
+    type: "single"
+    options:
+      - "ぜひ購入したい"
+      - "やや購入したい"
+      - "どちらともいえない"
+      - "あまり購入したくない"
+      - "まったく購入したくない"
+    randomize_options: false
+    top_box: [1, 2]
+
+main_survey:
+  model:
+    endpoint: "fake"       # 決定論的なダミー。実エンドポイント無しで最後まで通せる
+    deployment: "smoke_test"
+    thinking: false        # 常に false（AGENTS.md 不変条件）
+    max_tokens: 500
+    concurrency: 8
+
+output:
+  segments: ["total", "sex"]
+  formats: ["csv"]

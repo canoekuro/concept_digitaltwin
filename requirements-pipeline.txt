@@ -1,0 +1,15 @@
+# パイプライン実行基盤（CLI・ノートブック・ジョブのクラスタ）向けの実行時依存。
+# lint/test のみなら requirements-ci.txt、Databricks Apps 側は requirements.txt。
+#
+# ルートの requirements.txt ではなくこの名前なのは、ルートの requirements.txt を
+# Databricks Apps が自動で install するため（app.yaml の冒頭コメント）。
+pyspark==4.0.1
+delta-spark==4.3.1
+PyYAML>=6.0
+huggingface_hub>=0.30
+databricks-sdk>=0.122
+openpyxl>=3.1
+# delta-spark 4.3.1 は pyspark>=4.0.1,<=4.1.1 を要求する。Spark 4.0 は Java 17/21 対応。
+# databricks-sdk は Model Serving の呼び出しに使う。認証は SDK の既定の認証チェーンに任せる
+# （Databricks 上では環境から解決、ローカルは DATABRICKS_HOST / DATABRICKS_TOKEN）。
+# openpyxl は report.xlsx（SPEC_PHASE1.md §7.4）の書き出しに使う。

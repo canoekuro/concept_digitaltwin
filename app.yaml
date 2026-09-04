@@ -1,0 +1,36 @@
+# Databricks Apps の起動設定（docs/SPEC_UI.md §6.3）。
+#
+# **このファイルがリポジトリ直下にあるのは意図的。** Apps はソースコードパス配下だけを
+# 同期し、そのルートの requirements.txt を install する。ソースを app/ にすると
+# persona_sim が同期対象から外れ、ホイールを作って Volume に置く運用が必要になる。
+# 直下をソースにすれば persona_sim もそのまま乗るので、ホイールは要らない。
+#
+# 書けるのは command と env の2つだけ。リソース（SQL Warehouse・ジョブ・Volume）は
+# ワークスペースのアプリ設定か Bundle 側で宣言し、ここでは valueFrom で参照する。
+#
+# ポートは設定しない。Databricks Apps が DATABRICKS_APP_PORT から
+# STREAMLIT_SERVER_PORT / STREAMLIT_SERVER_ADDRESS を注入する。
+# command はシェルを通らないので、&& もパイプも変数展開も使えない。
+
+command: ['streamlit', 'run', 'app/app.py']
+
+env:
+  # --- 宣言したリソースから注入される ---
+  # SQL Warehouse は「ID」が入る。HTTP パスはアプリ側で組み立てる
+  - name: 'DATABRICKS_WAREHOUSE_ID'
+    valueFrom: 'sql-warehouse'
+  # 調査を実行する事前定義ジョブの ID
+  - name: 'PERSONA_SIM_JOB_ID'
+    valueFrom: 'persona-sim-job'
+  # 調査定義（YAML）を置く Volume。/Volumes/{catalog}/{schema}/{volume} が入る
+  - name: 'PERSONA_SIM_SURVEY_VOLUME'
+    valueFrom: 'survey-volume'
+
+  # --- 直接書く値。テーブルの置き場所 ---
+  # ここに書くのは AGENTS.md の例外条項どおり。コードは環境変数からしか読まないが、
+  # その値を入れるのはデプロイ設定の仕事で、どのカタログに書いたかが残らないと
+  # 結果を辿れない（エンドポイント名を設定値として書くのと同じ理由）。
+  - name: 'PERSONA_SIM_CATALOG'
+    value: 'research_system'
+  - name: 'PERSONA_SIM_SCHEMA'
+    value: 'default'

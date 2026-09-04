@@ -1,0 +1,299 @@
+# 調査定義のサンプル（SPEC_PHASE1.md §3）。
+#
+# 既定の提示設計は「反実仮想モナディック」（§5.3）。
+# 全ペルソナが全コンセプトを、互いに独立したセッションで評価する。
+# 実査では不可能な設計で、サンプル差による交絡も順序効果も発生しない。
+#
+# screening: / main_survey: の model / prompt / persona_card は config/ui_config.yaml の内容を
+# そのまま書き写したもの（UI 経由で投稿すれば persona_sim/uiconfig/build.py の build_survey_dict() が
+# 画面入力とあわせて自動生成する内容と同等）。screening.conditions は画面で入力する自然言語の
+# 対象者条件なので、ここではこのサンプル用の具体例を書いている。config/ui_config.yaml を変更したら
+# このサンプルも合わせて見直すこと。
+
+survey:
+  id: "cs_2026_0801_rtd_a"
+  name: "RTD新コンセプト評価"
+  type: "concept"          # 調査の種類（§3.0）。省略時も concept
+
+panel:
+  size: 600
+  # 割り付けの合計は panel.size と一致させること（一致しないと validate が止まる）。
+  # ここは 100 × 6セル = 600。
+  seed: 42
+  quotas:
+    mode: "count"
+    cells:
+      - {cell_id: "M_20s", sex: "男", age_min: 20, age_max: 29, n: 100}
+      - {cell_id: "M_30s", sex: "男", age_min: 30, age_max: 39, n: 100}
+      - {cell_id: "M_40s", sex: "男", age_min: 40, age_max: 49, n: 100}
+      - {cell_id: "F_20s", sex: "女", age_min: 20, age_max: 29, n: 100}
+      - {cell_id: "F_30s", sex: "女", age_min: 30, age_max: 39, n: 100}
+      - {cell_id: "F_40s", sex: "女", age_min: 40, age_max: 49, n: 100}
+  filters:
+    age_min: 20          # 酒類カテゴリなので未成年を含めない
+
+# 対象者条件の絞り込み（SPEC_PHASE1.md §4.2）。ask / assume / infer の3方式から選ぶ。
+# ここでは config/ui_config.yaml の既定と同じ infer（別セッションの LLM が蓋然性で判定）。
+screening:
+  model:                        # 省略したキーは main_survey.model を引き継ぐ
+    deployment: "databricks-gemini-3-5-flash-lite"
+    max_tokens: 256             # 番号列を返すので回答生成より多めに要る
+
+  prompt:
+    system: |
+      あなたは調査対象者の選定を担当します。
+      複数の人物像と対象者条件を読み、条件に当てはまる蓋然性が高い人物を選んでください。
+      - 断定できなくてよいので、書かれている情報から見て可能性が高い人物を選んでください
+      - 条件に無関係な理由で人数を調整しないでください
+      - 指定された形式のみで回答し、説明や前置きは書かないでください
+    rule: "上記の条件に当てはまる蓋然性が高い人物の番号を、カンマ区切りですべて挙げてください。該当者がいない場合は「なし」と答えてください。番号以外は書かないでください。"
+
+  persona_card:                 # 判定に見せるペルソナ像（ナラティブ列は既定で載せない）
+    attributes:
+      - { field: "sex" }
+      - { field: "age", suffix: "歳" }
+      - { field: "prefecture", suffix: "在住" }
+    include_summary: true
+    persona_fields:
+      - { field: "hobbies_and_interests", label: "趣味・関心事" }
+
+  mode: "infer"                 # ask（実際に聞く）| assume（前提として与える）| infer（蓋然性で選ぶ）
+  oversample_factor: 4          # 候補の抽出倍率。通過者が構造的に足りないときは早期に停止する
+  # logic: は書かない。infer では判定の指示が上の prompt.rule に一本化されている
+  batch_size: 20                # 1回の判定に渡すペルソナ数
+  conditions:
+    - "缶チューハイ・缶ハイボールを月1回以上飲む"
+
+stimuli:
+  # 画像を添える場合は image_uri に Unity Catalog Volumes のパスを書く
+  # （例: /Volumes/main/persona_lab/stimuli/c1.png）。image_mode: native は未実装。
+  - id: "c1"
+    name: "コンセプトA"
+    text: |
+      【商品名】ゆずハイボール
+      【特徴】国産ゆず果汁を使った、甘さ控えめの缶ハイボール。アルコール5%。
+      【価格】希望小売価格 205円（350ml）
+  - id: "c2"
+    name: "コンセプトB"
+    text: |
+      【商品名】無糖レモンサワー ストロング
+      【特徴】糖類・甘味料ゼロ、レモン果汁10%。アルコール9%。
+      【価格】希望小売価格 190円（350ml）
+  - id: "c3"
+    name: "コンセプトC"
+    text: |
+      【商品名】クラフトジンソーダ 山椒
+      【特徴】和素材のクラフトジンを使った、山椒が香るジンソーダ。アルコール7%。
+      【価格】希望小売価格 260円（350ml）
+
+design:
+  sample_overlap: "same"       # disjoint | allow_overlap | same
+  presentation: "sequential"   # sequential | simultaneous
+  rotation: "none"             # none | random | balanced
+
+# 設問は「そのペルソナが何番目に見るコンセプトについて聞くか」を slot で指定し、
+# 1人が評価するコンセプトの数だけ展開する。設問IDは実行時にも一意なので、
+# remember から設問IDだけで曖昧さなく参照できる。
+#
+# measure はコンセプト横断で「同じ問い」として束ねるキー。これが無いと
+# コンセプト比較表（§7.2）が組めない——slot ごとに別IDになるため。
+#
+# remember はどの設問の回答を持ったままこの設問に入るか（§5.1）。
+#   - 同じ案の中では、購入意向の答えを踏まえて新規性を聞く
+#   - 案が変わる最初の設問では持ち込まない（前の案の評価に引きずられないため）
+#   - 列挙どおりで推移しない。q_reason に購入意向も要るなら両方書く
+questions:
+  # --- 1番目に提示する案 ---
+  - id: "q_intent_1"
+    slot: 1
+    measure: "q_intent"
+    system: "purchase_intent"          # main_survey.prompt.systems の名前（§6.1）
+    text: "この商品を購入したいと思いますか。"
+    type: "single"
+    options:
+      - "ぜひ購入したい"
+      - "やや購入したい"
+      - "どちらともいえない"
+      - "あまり購入したくない"
+      - "まったく購入したくない"
+    randomize_options: false   # 順序尺度なのでシャッフルしない
+    top_box: [1, 2]
+    remember: "none"           # 新しい案の提示。前の案の記憶は持ち込まない
+  - id: "q_novelty_1"
+    slot: 1
+    measure: "q_novelty"
+    system: "novelty"          # main_survey.prompt.systems の名前（§6.1）
+    text: "この商品は新しいと思いますか。"
+    type: "single"
+    options:
+      - "とても新しい"
+      - "やや新しい"
+      - "どちらともいえない"
+      - "あまり新しくない"
+      - "まったく新しくない"
+    randomize_options: false
+    top_box: [1, 2]
+    remember: ["q_intent_1"]   # 同じ案への購入意向を踏まえて答えさせる
+  - id: "q_reason_1"
+    slot: 1
+    measure: "q_reason"
+    text: "そう思った理由を教えてください。"
+    type: "open"
+    max_length: 150
+    remember: ["q_intent_1", "q_novelty_1"]
+
+  # --- 2番目に提示する案 ---
+  - id: "q_intent_2"
+    slot: 2
+    measure: "q_intent"
+    system: "purchase_intent"          # main_survey.prompt.systems の名前（§6.1）
+    text: "この商品を購入したいと思いますか。"
+    type: "single"
+    options:
+      - "ぜひ購入したい"
+      - "やや購入したい"
+      - "どちらともいえない"
+      - "あまり購入したくない"
+      - "まったく購入したくない"
+    randomize_options: false   # 順序尺度なのでシャッフルしない
+    top_box: [1, 2]
+    remember: "none"           # 新しい案の提示。前の案の記憶は持ち込まない
+  - id: "q_novelty_2"
+    slot: 2
+    measure: "q_novelty"
+    system: "novelty"          # main_survey.prompt.systems の名前（§6.1）
+    text: "この商品は新しいと思いますか。"
+    type: "single"
+    options:
+      - "とても新しい"
+      - "やや新しい"
+      - "どちらともいえない"
+      - "あまり新しくない"
+      - "まったく新しくない"
+    randomize_options: false
+    top_box: [1, 2]
+    remember: ["q_intent_2"]   # 同じ案への購入意向を踏まえて答えさせる
+  - id: "q_reason_2"
+    slot: 2
+    measure: "q_reason"
+    text: "そう思った理由を教えてください。"
+    type: "open"
+    max_length: 150
+    remember: ["q_intent_2", "q_novelty_2"]
+
+  # --- 3番目に提示する案 ---
+  - id: "q_intent_3"
+    slot: 3
+    measure: "q_intent"
+    system: "purchase_intent"          # main_survey.prompt.systems の名前（§6.1）
+    text: "この商品を購入したいと思いますか。"
+    type: "single"
+    options:
+      - "ぜひ購入したい"
+      - "やや購入したい"
+      - "どちらともいえない"
+      - "あまり購入したくない"
+      - "まったく購入したくない"
+    randomize_options: false   # 順序尺度なのでシャッフルしない
+    top_box: [1, 2]
+    remember: "none"           # 新しい案の提示。前の案の記憶は持ち込まない
+  - id: "q_novelty_3"
+    slot: 3
+    measure: "q_novelty"
+    system: "novelty"          # main_survey.prompt.systems の名前（§6.1）
+    text: "この商品は新しいと思いますか。"
+    type: "single"
+    options:
+      - "とても新しい"
+      - "やや新しい"
+      - "どちらともいえない"
+      - "あまり新しくない"
+      - "まったく新しくない"
+    randomize_options: false
+    top_box: [1, 2]
+    remember: ["q_intent_3"]   # 同じ案への購入意向を踏まえて答えさせる
+  - id: "q_reason_3"
+    slot: 3
+    measure: "q_reason"
+    text: "そう思った理由を教えてください。"
+    type: "open"
+    max_length: 150
+    remember: ["q_intent_3", "q_novelty_3"]
+
+main_survey:
+  model:
+    endpoint: "databricks"       # databricks | fake
+    deployment: "databricks-gemini-3-5-flash-lite"
+    thinking: false              # 常に false（AGENTS.md 不変条件）
+    # 出力予算は**トークン**（エンドポイント側の絶対の打ち切り）。設問側の
+    # max_length / reasoning_max_length は**文字数**で、モデルへの指示文に入る目安。
+    # 別物なので片方から他方を自動計算しない（比がモデルで変わる）。噛み合っていない
+    # 組み合わせは validate が W_OUTPUT_BUDGET で警告する。
+    max_tokens: 8
+    max_tokens_open: 512         # 自由回答（q_reason）。字数は設問の max_length
+    max_tokens_reasoning: 512    # reasoning: true の設問（§6.3）。字数は reasoning_max_length
+    concurrency: 32
+    structured_output: "auto"    # auto | always | never
+
+  prompt:
+    # 既定の [system]。下の systems を指していない設問（q_reason_*）はこれで聞かれる
+    system: |
+      あなたはこれから提示する人物になりきって、調査に回答します。
+      - この人物の実際の生活実感に即して答えてください
+      - 調査に協力的すぎる態度をとらないでください。
+        興味のない対象には率直に興味がないと答えてください
+      - 指定された形式のみで回答し、説明や前置きは書かないでください
+
+    # 設問ごとに使い分ける [system]（§6.1）。questions[].system に名前で紐づける。
+    # 記憶（remember）を跨いでも、いま聞いている設問のものが [system] になる
+    systems:
+      purchase_intent: |
+        あなたはこれから提示する人物になりきって、調査に回答します。
+        - この人物の実際の生活実感に即して答えてください
+        - 調査に協力的すぎる態度をとらないでください。
+          興味のない対象には率直に興味がないと答えてください
+        - この人物のふだんの買い物の仕方・使う場面・支払える金額に照らして、実際に手に取るかどうかで判断してください
+        - 指定された形式のみで回答し、説明や前置きは書かないでください
+      novelty: |
+        あなたはこれから提示する人物になりきって、調査に回答します。
+        - この人物の実際の生活実感に即して答えてください
+        - 調査に協力的すぎる態度をとらないでください。
+          興味のない対象には率直に興味がないと答えてください
+        - この人物がすでに知っている商品と引き比べて、どこが違うのかで判断してください。買いたいかどうかは考えないでください
+        - 指定された形式のみで回答し、説明や前置きは書かないでください
+
+    # 回答指示文（設問タイプごと）。{max_length} を使えるのは open のみ
+    rules:
+      single: "番号のみで答えてください。"
+      scale: "番号のみで答えてください。"
+      multi: "当てはまる番号をすべて、カンマ区切りで答えてください。"
+      open: "{max_length}文字以内で答えてください。"
+      numeric: "数値のみで答えてください。"
+      # reasoning: true の設問だけで使う。上の指示行を設問タイプごとに置き換える（§6.3）。
+      # 置き換えなので、multi の「すべて」のようなタイプ固有の指示はこちらにも書く。
+      # {max_length} には設問の reasoning_max_length が入る。この調査定義では有効にしていない
+      reasoning:
+        single: "まず、そう考えた理由を{max_length}文字以内で書き、そのうえで当てはまる番号を1つ選んでください。"
+        scale: "まず、そう考えた理由を{max_length}文字以内で書き、そのうえで当てはまる番号を1つ選んでください。"
+        multi: "まず、そう考えた理由を{max_length}文字以内で書き、そのうえで当てはまる番号をすべて挙げてください。"
+
+  persona_card:
+    # 属性行。載せたい属性だけを並べる（空リストにすると属性行そのものが出ない）
+    attributes:
+      - { field: "sex" }
+      - { field: "age", suffix: "歳" }
+      - { field: "prefecture", suffix: "在住" }
+      - { field: "marital_status" }
+      - { field: "education_level" }
+      - { field: "occupation_raw" }
+    include_summary: true        # persona（総括文）を載せるか
+    # 本調査でペルソナカードに含める定性フィールド
+    persona_fields:
+      - { field: "cultural_background", label: "生活背景" }
+      - { field: "professional_persona", label: "仕事" }
+      - { field: "hobbies_and_interests", label: "関心事" }
+      - { field: "culinary_persona", label: "食まわり" }
+
+output:
+  segments: ["total", "sex", "age_band_10", "sex_x_age_band_10", "cell_id"]
+  formats: ["delta", "csv", "xlsx"]

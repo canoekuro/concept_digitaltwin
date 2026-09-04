@@ -1,0 +1,66 @@
+# Virtual Environment
+venv/
+.venv/
+.venv-ci/
+env/
+.env
+.env.*
+
+# Credentials / endpoints (never commit; 環境変数またはシークレット管理から読む)
+.databrickscfg
+*.pem
+*.key
+secrets/
+
+# Claude Code: HTML レビュー/プラン成果物（ローカル閲覧用・自動生成。.agents/rules/review-deliverables.md 参照）
+tasks/_review/
+
+# Claude Code: 個人設定と、共通リポジトリ(retrospective)からリンクされるスキル
+# 共有設定 .claude/settings.json はコミットする（フック定義の SSoT）。
+.claude/settings.local.json
+.claude/skills/
+
+# 他エージェント / MCP のローカル設定
+.mcp.json
+.cursor/
+.codex/
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+*.egg-info/
+.ruff_cache/
+
+# ビルド成果物。`pip install .` がパッケージの複製を作るのでコミットしない
+build/
+dist/
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# OS/System files
+.DS_Store
+Thumbs.db
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# データセット・実行成果物（ソースではない。ストレージ/Delta 側に置く）
+# ルート直下のみ。persona_sim/data/ はパッケージ同梱の参照テーブル（国勢調査）なのでコミットする。
+/data/
+outputs/
+*.parquet
+*.duckdb
+
+# ノートブックのローカル実行成果物（notebooks/quickstart.ipynb が作る）
+notebooks/_quickstart/
+notebooks/.ipynb_checkpoints/

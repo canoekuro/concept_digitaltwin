@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "persona-sim"
+# 版は `persona_sim/__init__.py` の `__version__` を唯一の出どころにする。
+# ここにも書くと二重定義になり、実際に 0.1.0 と 0.3.0 で食い違っていた。
+dynamic = ["version"]
+description = "AIペルソナ・コンセプト調査シミュレータのパイプラインと Web UI"
+requires-python = ">=3.11"
+dependencies = [
+    "PyYAML>=6.0",
+    "huggingface_hub>=0.30",
+    "databricks-sdk>=0.122",
+    "openpyxl>=3.1",
+]
+
+[project.optional-dependencies]
+spark = [
+    "pyspark==4.0.1",
+    "delta-spark==4.3.1",
+]
+
+[project.scripts]
+persona-sim = "persona_sim.cli:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "persona_sim.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["persona_sim*"]
+
+# 参照テーブル（国勢調査の人口構成比）はパッケージに同梱する。
+# persona_sim/data はパッケージではないので、明示しないとホイールから落ちる。
+[tool.setuptools.package-data]
+persona_sim = ["data/*.csv", "data/*.md"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP"]
+# E501: 長行は自動折り返ししない（日本語コメント・仕様引用が多いため）。
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+# Streamlit は起動スクリプトのディレクトリ（app/）を sys.path に入れるので、
+# アプリ内の `lib` は第三者パッケージではなく自前のコード。
+known-first-party = ["persona_sim", "lib"]
+
+[tool.ruff.lint.per-file-ignores]
+# ノートブックでは sys.path を通してから import する順序に意味があるため、
+# セル内の import 位置は問わない。
+"*.ipynb" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# 未インストールでも `pytest` 単体で persona_sim を解決できるようにする
+# （`python -m pytest` なら CWD が入るが、起動方法に依存させない）。
+pythonpath = ["."]
+markers = [
+    "spark: SparkSession を起動するテスト（起動が重いので既定の CI ジョブでは除外する）",
+]

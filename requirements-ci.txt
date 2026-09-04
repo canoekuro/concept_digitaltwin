@@ -1,0 +1,8 @@
+# Lint と Spark 不要のテストに必要な最小構成。
+# Spark 結合テストを回すには requirements.txt（pyspark / delta-spark）も要る。
+pytest==9.0.3
+ruff
+# ジョブ定義のローダが読み込み時に import するため、Spark 抜きのテストでも要る。
+PyYAML>=6.0
+# 集計の xlsx 出力（§7.4）をテストするため、Spark 抜きのジョブでも要る。
+openpyxl>=3.1
