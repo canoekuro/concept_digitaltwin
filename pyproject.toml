@@ -22,9 +22,6 @@ spark = [
     "delta-spark==4.3.1",
 ]
 
-[project.scripts]
-persona-sim = "persona_sim.cli:main"
-
 [tool.setuptools.dynamic]
 version = {attr = "persona_sim.__version__"}
 

@@ -43,16 +43,26 @@ M1〜M3 で1本通してから M4 以降を足します（`SPEC_PHASE1.md` §12�
 集計表出力（トップライン、セグメント別、コンセプト別 + 生データ + 実行メタデータ）
 ```
 
-CLI（`SPEC_PHASE1.md` §10）:
+入口は**ノートブックと Web UI の2つ**です（`SPEC_PHASE1.md` §10）。CLI はありません。
+どちらもライブラリの同じ関数を直接呼びます。
 
-```bash
-persona-sim personas build --shards 1     # personas_base を構築（M1）
-persona-sim validate  survey.yaml            # スキーマ検証・抽出可能性の事前チェック
-persona-sim panel     survey.yaml            # パネル構築のみ（LLM を呼ばない）
-persona-sim screen    survey.yaml            # スクリーニング実行とパネル確定
-persona-sim run       survey.yaml            # 回答生成（中断しても同じコマンドで再開）
-persona-sim aggregate survey.yaml            # 集計（§7）。クロス集計表・比較表・出力一式
-persona-sim export    survey.yaml --xlsx     # 集計をやり直さず aggregates からファイルだけ出す
+| やること | 入口 |
+|---|---|
+| `personas_base` の構築（M1） | `notebooks/quickstart.ipynb`（`personas.build.build_personas_base()`） |
+| 調査を1本通す | `notebooks/run_survey.ipynb`（Databricks ジョブの本体でもある） |
+| 画面から調査を投入・結果を見る | `app/`（Streamlit / Databricks Apps。`deploy/README.md`） |
+
+`run_survey.ipynb` が呼ぶ順序がそのままパイプラインです。
+
+```python
+survey = load_survey(survey_path)          # 調査定義の読み込み
+validate_static(survey)                    # スキーマ検証
+validate_feasibility(spark, personas, survey)  # 抽出可能性の事前チェック（E1）
+build_panel(spark, survey, storage)        # パネル構築（LLM を呼ばない）
+screen_survey(spark, survey, storage)      # スクリーニング実行とパネル確定
+run_survey(spark, survey, storage)         # 回答生成（中断しても同じセルで再開）
+aggregate_survey(spark, survey, storage, output_dir())  # 集計と出力一式（§7）
+write_metadata(spark, survey, run_result, storage, output_dir())
 ```
 
 テーブルの置き場所は環境変数で指定します（秘密情報をコードに置かないため）。
@@ -185,7 +195,7 @@ screening:
 
 ### 集計と出力
 
-`persona-sim aggregate` が `outputs/{survey_id}/` に一式を書きます（`SPEC_PHASE1.md` §7.4）。
+`aggregate_survey()` が `outputs/{survey_id}/` に一式を書きます（`SPEC_PHASE1.md` §7.4）。
 
 | ファイル | 内容 |
 |---|---|
@@ -208,7 +218,7 @@ screening:
 
 > **M5 より前に作った `responses` / `screener_responses` は作り直してください。**
 > 複数回答を保存するため `answer_codes` 列を足しました。列の無い既存テーブルには
-> 追記できません（`persona-sim panel` からやり直すのが確実です）。
+> 追記できません（`build_panel()` からやり直すのが確実です）。
 
 > **既存の `runs` テーブルに `survey_name` と `survey_type` を足してください。**
 > 調査一覧を出すたびに `metadata_json` を掘るのを避けるため、調査名と調査の種類（§3.0）を

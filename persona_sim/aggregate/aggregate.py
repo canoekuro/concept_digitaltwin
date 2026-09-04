@@ -374,7 +374,7 @@ def result_from_aggregates(
     rows = read_aggregates(spark, survey, storage)
     if not rows:
         raise PersonaSimError(
-            f"survey_id={survey.survey_id} の集計結果が無い。先に `persona-sim aggregate` を実行すること"
+            f"survey_id={survey.survey_id} の集計結果が無い。先に `aggregate_survey()` を実行すること"
         )
 
     result = AggregateResult(survey_id=survey.survey_id)

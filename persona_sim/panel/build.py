@@ -174,7 +174,7 @@ def finalize_panel(
     )
     if not candidates:
         raise PersonaSimError(
-            f"survey_id={survey.survey_id} に判定対象の候補が無い。先に `persona-sim panel` を実行すること"
+            f"survey_id={survey.survey_id} に判定対象の候補が無い。先に `build_panel()` を実行すること"
         )
 
     requested = allocate_cell_sizes(survey)

@@ -171,7 +171,7 @@ def _joined(
     responses_locator = locator(RESPONSES, storage)
     if not delta.table_exists(spark, responses_locator):
         raise PersonaSimError(
-            f"{responses_locator.describe()} が無い。先に `persona-sim run` を実行すること"
+            f"{responses_locator.describe()} が無い。先に `run.run_survey()` を実行すること"
         )
 
     responses = delta.read_table(spark, responses_locator).filter(
@@ -179,7 +179,7 @@ def _joined(
     )
     if not responses.take(1):
         raise PersonaSimError(
-            f"survey_id={survey.survey_id} の回答が1件も無い。先に `persona-sim run` を実行すること"
+            f"survey_id={survey.survey_id} の回答が1件も無い。先に `run.run_survey()` を実行すること"
         )
 
     panels = (

@@ -181,6 +181,6 @@ def stimulus_for(
         raise SurveyDefinitionError(
             f"questions[{question.id}].slot: {question.slot} は範囲外。"
             f"このペルソナが評価するコンセプトは {len(assigned)} 件なので"
-            f" 1〜{len(assigned)} で指定すること。`persona-sim validate` で全件を確認できる"
+            f" 1〜{len(assigned)} で指定すること。`panel.validate.validate_static()` で全件を確認できる"
         )
     return (stimuli_by_id[assigned[question.slot - 1]],)

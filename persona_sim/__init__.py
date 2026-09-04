@@ -9,7 +9,7 @@
 #: `dynamic = ["version"]` でこの値を読む（`[tool.setuptools.dynamic]`）。
 #:
 #: 二重に持つと食い違う（実際に 0.1.0 と 0.3.0 でずれていた）。
-#: `run_metadata.json` の `persona_sim_version` と `persona-sim --version` は
+#: `run_metadata.json` の `persona_sim_version` は
 #: この値を書くので、ずれると「どの版のコードで走ったのか」が後から判別できない
 #: （`SPEC_PHASE1.md` §9.1 の「各バージョンが揃えば入力が再現できる」の根拠が崩れる）。
 #:
