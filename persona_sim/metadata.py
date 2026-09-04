@@ -90,15 +90,16 @@ def build_metadata(
         },
         "panel": _panel_summary(spark, survey, storage),
         "design": {
-            "sample_overlap": str(survey.design.sample_overlap),
-            "presentation": str(survey.design.presentation),
+            # 提示設計は反実仮想モナディック固定（§5）。設定では変えられないが、
+            # 記録から「どう見せたのか」が読み取れないと再現できないので残す。
+            "presentation": "counterfactual_monadic",
+            "stimuli_per_persona": survey.stimuli_per_persona,
             # 記憶は設問の性質なので、設問ごとに残す。何を持たせて聞いたのかが
             # 分からないと、モデルへの入力を再現できない（§9.1）。
             "questions_memory": {
                 question_id: remember.describe()
                 for question_id, remember in resolve_remember(survey).items()
             },
-            "rotation": str(survey.design.rotation),
             "image_mode": sorted({str(s.image_mode) for s in survey.stimuli}),
         },
         "execution": {

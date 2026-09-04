@@ -6,11 +6,14 @@
 この文書は**書き方**だけを扱います。なぜその設計なのかは `SPEC_PHASE1.md` にあります
 （各節からリンクします）。フィールドの網羅的な一覧も `SPEC_PHASE1.md` §3 です。
 
-**書いたら必ず `persona-sim validate` を通してください。** 綴り違い・廃止フィールド・
-設計の矛盾は、実行前にここで止まります。移行先や直し方もメッセージに出ます。
+**書いたら必ず検証を通してください。** 綴り違い・未知のキー・設問の抜けは、実行前に
+ここで止まります。直し方もメッセージに出ます。
 
-```bash
-persona-sim validate path/to/survey.yaml
+```python
+from persona_sim.panel.loader import load_survey
+from persona_sim.panel.validate import validate_static
+
+report = validate_static(load_survey("path/to/survey.yaml"))
 ```
 
 ---
@@ -457,29 +460,16 @@ screening:
 
 ## 6. 提示設計
 
-コンセプトが2件以上あるときだけ意味を持ちます（`SPEC_PHASE1.md` §5）。
+**反実仮想モナディック固定です**（`SPEC_PHASE1.md` §5）。書く項目はありません。
 
-```yaml
-design:
-  sample_overlap: "same"        # disjoint | allow_overlap | same
-  presentation: "sequential"    # sequential | simultaneous
-  stimuli_per_persona: null     # allow_overlap のときだけ 2〜(コンセプト数-1)
-  rotation: "none"              # none | random | balanced
-```
+- 全ペルソナが**全コンセプトを定義順に1件ずつ**評価します
+- 同じ人に同じコンセプトが2回当たることはありません
+- 設問どうしは既定で独立（`remember` を書かないかぎり記憶を持たない）なので、
+  案を独立に評価させたうえで直接比べられます
+- 有効サンプル数は `panel.size` のままです
 
-**`sample_overlap`** は1人が何案を評価するかです。
-
-| 値 | 1人あたり | 有効サンプル数 |
-|---|---|---|
-| `disjoint` | 1件 | `panel.size ÷ 案数` |
-| `allow_overlap` | `stimuli_per_persona` 件 | `panel.size × m ÷ 案数` |
-| `same`（既定） | 全件 | `panel.size` のまま |
-
-**`rotation: balanced`（ラテン方格）は、コンセプトをまたぐ記憶があるときだけ意味を持ちます。**
-どの設問も記憶を持たないなら順序効果が発生しないので、`validate` が警告します。
-
-**`presentation: simultaneous`** は全案を1度に見せて比較させる形です。この場合 `slot` は
-書けません（提示順という概念がないため）。
+したがって**設問は案の数だけ `slot` 展開が要ります**（コンセプト3件なら slot 1〜3）。
+抜けると読み込みで止まります。
 
 ---
 
@@ -490,11 +480,10 @@ design:
 | 症状 | 原因 |
 |---|---|
 | `割り付けの合計 N が panel.size と一致しない` | `quotas.cells` の `n` の合計を `panel.size` に合わせる |
-| `slot [2] の設問が無い` | 1人が2案を評価するのに slot 2 の設問を書いていない |
-| `slot は 1〜N。範囲外の slot がある` | `sample_overlap` を変えたのに設問の展開を直していない |
+| `slot [2] の設問が無い` | コンセプト2件目について聞く設問を書いていない |
+| `slot は 1〜N。範囲外の slot がある` | コンセプトを減らしたのに設問の展開を直していない |
 | `設問IDが重複している` | 展開した設問に同じIDを付けている |
 | `measure の設問で top_box が違う` | 同じ問いなのに T2B の定義がコンセプトごとにずれている |
-| `design.memory は廃止した` | 記憶は `questions[].remember` へ移行（案内が出ます） |
 | `順序尺度の選択肢はシャッフルしない` | `scale` / `top_box` を持つ設問の `randomize_options` を外す |
 | `未知のキー` | 綴り違い。黙って捨てないので必ず止まります |
 
@@ -502,15 +491,18 @@ design:
 
 ## 8. 実行
 
-```bash
-persona-sim validate survey.yaml     # 検証と見積もり（必ず先に）
-persona-sim panel    survey.yaml     # パネル構築
-persona-sim screen   survey.yaml     # スクリーニング（ask / infer のときだけ）
-persona-sim run      survey.yaml     # 回答生成
-persona-sim aggregate survey.yaml    # 集計と出力
+`notebooks/run_survey.ipynb` を上から実行します（Databricks ジョブの本体でもあります）。
+
+```python
+survey = load_survey("survey.yaml")
+validate_static(survey)                    # 検証と見積もり（必ず先に）
+build_panel(spark, survey, storage)        # パネル構築
+screen_survey(spark, survey, storage)      # スクリーニング（screening: を書いたときだけ）
+run_survey(spark, survey, storage)         # 回答生成
+aggregate_survey(spark, survey, storage, output_dir())  # 集計と出力
 ```
 
-`validate` は実行前に見積もりを出します。**費用に直結するので必ず確認してください。**
+`validate_static()` は実行前に見積もりを出します。**費用に直結するので必ず確認してください。**
 
 ```
 パネル人数        : 600

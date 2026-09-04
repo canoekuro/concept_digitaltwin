@@ -372,12 +372,9 @@ def test_survey_dict_rejects_no_sex_selected(ui):
 
 
 def test_design_is_always_counterfactual_monadic(ui):
+    """提示設計は設定で変えられないので、調査定義に design は書かない（§5）。"""
     data = build_survey_dict(ui, _form())
-    assert data["design"] == {
-        "sample_overlap": "same",
-        "presentation": "sequential",
-        "rotation": "none",
-    }
+    assert "design" not in data
     # 記憶は設問側。画面は案どうしを独立に評価させるので、どの設問にも書かない。
     assert all("remember" not in question for question in data["questions"])
 

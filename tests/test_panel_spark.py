@@ -5,7 +5,7 @@
 - seed と各バージョンが揃えば同一結果が再現できる
 - **並列度を変えても結果が変わらない**（乱数サンプリングを使っていないことの証明）
 - 同一ペルソナがパネルに2回現れない
-- `sample_overlap: disjoint` でコンセプトごとの評価者数が均等
+- 全ペルソナが全コンセプトを定義順に評価する（反実仮想モナディック固定・§5）
 """
 
 from __future__ import annotations
@@ -16,7 +16,6 @@ import pytest
 
 from persona_sim.config import StorageConfig
 from persona_sim.errors import InsufficientCandidatesError
-from persona_sim.panel.assignment import apply_assignment
 from persona_sim.panel.build import PANEL_COLUMNS, build_panel
 from persona_sim.panel.loader import survey_from_dict
 from persona_sim.panel.sampling import select_members
@@ -49,38 +48,21 @@ def personas(spark):
     return spark.createDataFrame(rows, PERSONA_SCHEMA).cache()
 
 
-def _survey(**design_overrides):
-    """`sample_overlap` を変えたら、設問の slot 展開もその数に合わせる。
-
-    1ペルソナが評価するコンセプト数を超える slot、および抜けた slot は
-    読み込みで止まる（`panel/loader.py`）。設計だけ変えると調査定義が組み立たない。
-    """
-    data = base_survey_dict(slots=_slots(design_overrides))
+def _survey(slots: int = 3):
+    data = base_survey_dict(slots=slots)
     data["panel"]["size"] = 30
     data["panel"]["quotas"]["cells"] = [
         {"cell_id": "M_20s", "sex": "男", "age_min": 20, "age_max": 29, "n": 15},
         {"cell_id": "F_20s", "sex": "女", "age_min": 20, "age_max": 29, "n": 15},
     ]
-    data["design"].update(design_overrides)
     return survey_from_dict(data)
 
 
-def _slots(design_overrides: dict) -> int:
-    """その設計で1ペルソナが評価するコンセプト数（ひな形のコンセプトは3件）。"""
-    match design_overrides.get("sample_overlap", "same"):
-        case "disjoint":
-            return 1
-        case "allow_overlap":
-            return design_overrides["stimuli_per_persona"]
-        case _:
-            return 3
-
-
 def _members(spark, personas, survey):
+    from persona_sim.panel.build import _assigned_stimuli
+
     members, report = select_members(spark, personas, survey)
-    assigned = apply_assignment(
-        members, survey.design, [s.id for s in survey.stimuli], survey.panel.seed
-    )
+    assigned = _assigned_stimuli(members, survey)
     rows = assigned.select("persona_uuid", "cell_id", "cell_rank", "assigned_stimuli").collect()
     return rows, report
 
@@ -159,49 +141,28 @@ def test_no_duplicate_persona_with_overlapping_cells(spark, personas):
     assert report.overlap_excluded  # 重なりを検知して警告材料を残していること
 
 
-def test_same_assigns_every_stimulus_without_duplicates(spark, personas):
-    rows, _ = _members(spark, personas, _survey(sample_overlap="same"))
+def test_every_persona_gets_every_stimulus_in_definition_order(spark, personas):
+    """反実仮想モナディック固定（§5）。重複が無いことは配列の形から自明に成り立つ。"""
+    rows, _ = _members(spark, personas, _survey())
     for row in rows:
         assigned = list(row["assigned_stimuli"])
         assert assigned == ["c1", "c2", "c3"]
         assert len(assigned) == len(set(assigned))
 
 
-def test_disjoint_is_balanced_across_stimuli(spark, personas):
-    """各コンセプトの評価者数が均等（セル内 round-robin が効いている）。"""
-    rows, _ = _members(spark, personas, _survey(sample_overlap="disjoint"))
-    assert all(len(row["assigned_stimuli"]) == 1 for row in rows)
-
-    for cell_id in ("M_20s", "F_20s"):
-        counts = Counter(
-            row["assigned_stimuli"][0] for row in rows if row["cell_id"] == cell_id
-        )
-        assert len(counts) == 3
-        assert max(counts.values()) - min(counts.values()) <= 1
-
-
-def test_allow_overlap_assigns_distinct_stimuli(spark, personas):
-    rows, _ = _members(
-        spark, personas, _survey(sample_overlap="allow_overlap", stimuli_per_persona=2)
+def test_each_stimulus_is_evaluated_by_everyone(spark, personas):
+    """コンセプトごとの評価者数が揃う——全員が全案を見るので定義から等しい。"""
+    rows, _ = _members(spark, personas, _survey())
+    counts = Counter(
+        stimulus_id for row in rows for stimulus_id in row["assigned_stimuli"]
     )
-    for row in rows:
-        assigned = list(row["assigned_stimuli"])
-        assert len(assigned) == 2
-        assert len(set(assigned)) == 2
+    assert set(counts) == {"c1", "c2", "c3"}
+    assert len(set(counts.values())) == 1 == len({len(rows)}) or max(counts.values()) == len(rows)
 
 
-def test_random_rotation_is_deterministic(spark, personas):
-    """rotation: random でも seed が同じなら同じ順序になる（F.shuffle は使えない）。"""
-    survey = _survey(rotation="random")
-    first, _ = _members(spark, personas, survey)
-    second, _ = _members(spark, personas, survey)
-
-    def order(rows):
-        return sorted((r["persona_uuid"], tuple(r["assigned_stimuli"])) for r in rows)
-
-    assert order(first) == order(second)
-    # 少なくとも1人は定義順と違う並びになっていること（並べ替えが効いている確認）
-    assert any(tuple(r["assigned_stimuli"]) != ("c1", "c2", "c3") for r in first)
+def test_a_single_concept_survey_assigns_just_that_one(spark, personas):
+    rows, _ = _members(spark, personas, _survey(slots=1))
+    assert all(list(row["assigned_stimuli"]) == ["c1"] for row in rows)
 
 
 def test_insufficient_candidates_raises_e1(spark, personas):

@@ -86,11 +86,9 @@ stimuli:
       【特徴】和素材のクラフトジンを使った、山椒が香るジンソーダ。アルコール7%。
       【価格】希望小売価格 260円（350ml）
 
-design:
-  sample_overlap: "same"       # disjoint | allow_overlap | same
-  presentation: "sequential"   # sequential | simultaneous
-  rotation: "none"             # none | random | balanced
-
+# 提示設計は反実仮想モナディック固定（§5）。全ペルソナが全コンセプトを定義順に
+# 1件ずつ、独立したセッションで評価する。設定では変えられない。
+#
 # 設問は「そのペルソナが何番目に見るコンセプトについて聞くか」を slot で指定し、
 # 1人が評価するコンセプトの数だけ展開する。設問IDは実行時にも一意なので、
 # remember から設問IDだけで曖昧さなく参照できる。

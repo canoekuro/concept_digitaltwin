@@ -13,7 +13,6 @@ from persona_sim.llm.fake import FakeClient
 from persona_sim.panel.loader import survey_from_dict
 from persona_sim.panel.schema import StructuredOutput
 from persona_sim.run.session import (
-    ALL_STIMULI,
     MISSING_ANSWER,
     SessionContext,
     StructuredOutputState,
@@ -48,11 +47,9 @@ PERSONAS = {
 PERSONAS["u2"].update({k: v for k, v in PERSONAS["u1"].items() if k != "uuid"})
 
 
-def _survey(memory="none", **design_overrides):
+def _survey(memory="none"):
     """`memory` はかつての `design.memory` の3値。設問ごとの `remember` に展開する。"""
-    data = base_survey_dict()
-    data["design"].update(design_overrides)
-    return survey_from_dict(with_remember(data, memory))
+    return survey_from_dict(with_remember(base_survey_dict(), memory))
 
 
 def _context(survey, client=None):
@@ -107,51 +104,27 @@ def test_sequence_records_presentation_order():
     assert [unit.sequence for unit in units] == [1, 1, 2, 2, 3, 3]
 
 
-def test_simultaneous_uses_reserved_stimulus_id():
-    """同時提示では回答が特定の1案に紐づかない（§5.3）。"""
-    survey = _survey(presentation="simultaneous", memory="full_session")
-    sessions = build_sessions(survey, PANEL_ROWS)
-    assert len(sessions) == 2
-    for session in sessions:
-        assert {unit.stimulus_id for unit in session.units} == {ALL_STIMULI}
-        assert {unit.sequence for unit in session.units} == {1}
-
-
 # --------------------------------------------------------------------------- #
 # 提示順（§9.1「誰に・どのコンセプトを・何番目に」）
 # --------------------------------------------------------------------------- #
 
-#: 定義順（c1, c2, c3）とは違う並びを割り当てたペルソナ。
-#: `rotation: random` / `balanced` が実際に作る形。
+#: 定義順（c1, c2, c3）とは違う並びを持つ `panels` の行。
+#: 提示設計を凍結した今は書き出されないが、**読む側は `assigned_stimuli` の順に従う**
+#: ことを固定しておく。調査定義の記述順から補う実装に戻ると、以前のパネルを読み直した
+#: ときにペルソナごとの提示順が黙って化ける（§9.1）。
 ROTATED_PANEL_ROWS = [{"persona_uuid": "u1", "assigned_stimuli": ["c3", "c1", "c2"]}]
 
 
-def test_simultaneous_without_memory_keeps_the_assigned_order_on_every_question():
-    """`memory: none` では各設問が独立セッションになるので、全設問が提示物を持つ。
-
-    持たせないと `run_session()` が `ctx.stimuli`（＝調査定義順）から補い、
-    **設問1だけがペルソナごとの提示順、設問2以降は全員同じ定義順**になる。
-    どのテーブルにも残らないので事後に気づけない。
-    """
-    survey = _survey(presentation="simultaneous", memory="none")
+def test_each_question_presents_the_concept_at_its_slot_in_the_assigned_order():
+    """`slot` は `assigned_stimuli` の位置。調査定義の記述順ではない。"""
+    survey = _survey(memory="none")
     sessions = build_sessions(survey, ROTATED_PANEL_ROWS)
 
     assert len(sessions) == len(survey.questions)
-    orders = {
-        tuple(s.id for s in session.units[0].stimuli_to_present) for session in sessions
-    }
-    assert orders == {("c3", "c1", "c2")}, "全設問が assigned_stimuli の順で提示すること"
-
-
-def test_sequential_without_memory_presents_on_every_question():
-    """逐次提示でも同じ。2問目以降が提示物を持たないと fallback 頼みになる。"""
-    survey = _survey(presentation="sequential", memory="none")
-    sessions = build_sessions(survey, ROTATED_PANEL_ROWS)
-
     for session in sessions:
         unit = session.units[0]
-        presented = tuple(s.id for s in unit.stimuli_to_present)
-        assert presented == (unit.stimulus_id,)
+        assert unit.stimulus_id == ROTATED_PANEL_ROWS[0]["assigned_stimuli"][unit.sequence - 1]
+        assert tuple(s.id for s in unit.stimuli_to_present) == (unit.stimulus_id,)
 
 
 def test_every_unit_carries_its_own_stimuli_in_presentation_order():
@@ -160,11 +133,12 @@ def test_every_unit_carries_its_own_stimuli_in_presentation_order():
     履歴を持つモードでも間引かない。間引くと提示物を持たないユニットを調査定義の
     記述順から補うことになり、ペルソナごとの提示順が失われる（§9.1）。
     """
-    survey = _survey(presentation="simultaneous", memory="full_session")
+    survey = _survey(memory="full_session")
     session = build_sessions(survey, ROTATED_PANEL_ROWS)[0]
 
+    assigned = ROTATED_PANEL_ROWS[0]["assigned_stimuli"]
     assert all(
-        tuple(s.id for s in unit.stimuli_to_present) == ("c3", "c1", "c2")
+        tuple(s.id for s in unit.stimuli_to_present) == (assigned[unit.sequence - 1],)
         for unit in session.units
     )
 
@@ -408,9 +382,8 @@ def test_an_exhausted_budget_stops_the_parse_loop():
 # --------------------------------------------------------------------------- #
 
 
-def _multi_survey(memory="none", **design_overrides):
+def _multi_survey(memory="none"):
     data = base_survey_dict()
-    data["design"].update(design_overrides)
     with_remember(data, memory)
     data["questions"].insert(
         1,

@@ -24,7 +24,6 @@ from persona_sim.panel.schema import (
     REMOVED_MODEL_FIELDS,
     UNSUPPORTED_QUESTION_TYPES,
     UNUSED_INFER_SCREENER_KEYS,
-    Design,
     Endpoint,
     ImageMode,
     InferModelOverrides,
@@ -35,7 +34,6 @@ from persona_sim.panel.schema import (
     PersonaCardConfig,
     PersonaField,
     PersonaFilter,
-    Presentation,
     PromptConfig,
     PromptHeadings,
     PromptRules,
@@ -47,8 +45,6 @@ from persona_sim.panel.schema import (
     ReasoningRules,
     Remember,
     RememberMode,
-    Rotation,
-    SampleOverlap,
     ScreenerLogic,
     ScreenerMode,
     ScreenerQuestion,
@@ -94,7 +90,6 @@ def survey_from_dict(data: Mapping[str, Any]) -> SurveyDefinition:
             "screening",
             "main_survey",
             "stimuli",
-            "design",
             "questions",
             "output",
         ),
@@ -114,8 +109,7 @@ def survey_from_dict(data: Mapping[str, Any]) -> SurveyDefinition:
     questions = tuple(
         _question(item, f"questions[{i}]") for i, item in enumerate(question_items)
     )
-    design = _design(data.get("design") or {})
-    _reject_unusable_questions(design, stimuli, questions, question_items)
+    _reject_unusable_questions(stimuli, questions)
     prompt = _prompt(main_survey.get("prompt") or {})
     _reject_unknown_system_prompts(prompt, questions)
     screening = data.get("screening")
@@ -126,7 +120,6 @@ def survey_from_dict(data: Mapping[str, Any]) -> SurveyDefinition:
         survey_type=_enum(SurveyType, survey.get("type", SurveyType.CONCEPT), "survey.type"),
         panel=_panel(_mapping(data, "panel", "panel")),
         stimuli=stimuli,
-        design=design,
         questions=questions,
         model=_model(_mapping(main_survey, "model", "main_survey.model")),
         output=_output(data.get("output") or {}),
@@ -194,7 +187,6 @@ def survey_from_record(record: Mapping[str, Any]) -> SurveyDefinition:
             _stimulus(item, f"stimuli[{i}]")
             for i, item in enumerate(_sequence(record, "stimuli", "stimuli"))
         ),
-        design=Design(),
         questions=tuple(
             _question(item, f"questions[{i}]")
             for i, item in enumerate(_sequence(record, "questions", "questions"))
@@ -487,28 +479,6 @@ def _stimulus(item: Any, path: str) -> Stimulus:
     )
 
 
-def _design(source: Any) -> Design:
-    path = "design"
-    mapping = _as_mapping(source, path)
-    _reject_unknown(
-        mapping,
-        ("sample_overlap", "presentation", "stimuli_per_persona", "rotation"),
-        path,
-    )
-    return Design(
-        sample_overlap=_enum(
-            SampleOverlap, mapping.get("sample_overlap", SampleOverlap.SAME), f"{path}.sample_overlap"
-        ),
-        presentation=_enum(
-            Presentation, mapping.get("presentation", Presentation.SEQUENTIAL), f"{path}.presentation"
-        ),
-        stimuli_per_persona=_opt_int(
-            mapping.get("stimuli_per_persona"), f"{path}.stimuli_per_persona"
-        ),
-        rotation=_enum(Rotation, mapping.get("rotation", Rotation.NONE), f"{path}.rotation"),
-    )
-
-
 def _question(item: Any, path: str) -> Question:
     mapping = _as_mapping(item, path)
     _reject_unknown(
@@ -560,10 +530,8 @@ def _question(item: Any, path: str) -> Question:
 
 
 def _reject_unusable_questions(
-    design: Design,
     stimuli: Sequence[Stimulus],
     questions: Sequence[Question],
-    question_items: Sequence[Any],
 ) -> None:
     """**設問が黙って消える**書き方を、読み込みの時点で止める。
 
@@ -580,17 +548,8 @@ def _reject_unusable_questions(
     ここは最初の1件で止める。
     """
     _reject_duplicate_question_ids(questions)
-
-    if design.presentation is Presentation.SIMULTANEOUS:
-        # 全案を1度に見せるので slot を持たない。被覆の概念が無い。
-        return
-    try:
-        per_persona = design.stimuli_count_per_persona(len(stimuli))
-    except SurveyDefinitionError:
-        # stimuli_per_persona の欠落。E6 として validate が扱うので、ここでは判定しない。
-        return
-
-    _reject_uncovered_slots(per_persona, questions)
+    # 全ペルソナが全コンセプトを評価するので、slot は 1〜K を覆っている必要がある。
+    _reject_uncovered_slots(len(stimuli), questions)
 
 
 def _reject_unknown_system_prompts(prompt: PromptConfig, questions: Sequence[Question]) -> None:

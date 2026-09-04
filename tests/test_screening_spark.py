@@ -78,11 +78,10 @@ def personas_frame(spark):
     return spark.createDataFrame(rows, PERSONA_SCHEMA).cache()
 
 
-def _survey_dict(*, mode="ask", oversample_factor=4, sample_overlap="same", questions=None):
-    # 1ペルソナが評価するコンセプト数に合わせて設問を slot 展開する。
-    # disjoint は1件、same は全3件（`slot` の抜けと範囲外は E6）。
-    data = base_survey_dict(slots=1 if sample_overlap == "disjoint" else 3)
-    data["survey"]["id"] = f"screen_{mode}_{sample_overlap}"
+def _survey_dict(*, mode="ask", oversample_factor=4, concepts=3, questions=None):
+    # 全ペルソナが全コンセプトを評価するので、設問はコンセプト数だけ slot 展開する。
+    data = base_survey_dict(slots=concepts)
+    data["survey"]["id"] = f"screen_{mode}_{concepts}"
     data["panel"]["size"] = CELL_SIZE
     data["panel"]["quotas"]["cells"] = [
         {"cell_id": "M_20_40s", "sex": "男", "age_min": 20, "age_max": 49, "n": CELL_SIZE}
@@ -94,10 +93,6 @@ def _survey_dict(*, mode="ask", oversample_factor=4, sample_overlap="same", ques
     if mode in ("ask", "infer"):
         screener["oversample_factor"] = oversample_factor
     data["screening"] = screener
-    data["design"] = {
-        "sample_overlap": sample_overlap,
-        "presentation": "sequential",
-    }
     data["main_survey"]["model"]["concurrency"] = 8
     return data
 
@@ -179,22 +174,20 @@ def test_screened_out_rows_have_no_assignment(spark, personas_frame, tmp_path):
             assert row["cell_rank"] is None
 
 
-def test_cell_rank_is_renumbered_and_keeps_disjoint_balanced(spark, personas_frame, tmp_path):
-    """確定後に順位を振り直さないと、コンセプトごとの評価者数が崩れる（§4.2 手順6）。
+def test_cell_rank_is_renumbered_after_screening(spark, personas_frame, tmp_path):
+    """確定後に順位を振り直す（§4.2 手順6）。
 
-    30人 ÷ 3コンセプトなので、振り直していれば各10人ちょうどになる。
-    候補の順位のまま割り当てると、非通過で空いた穴の分だけずれる。
+    候補の順位のまま残すと、非通過で空いた穴がそのまま `cell_rank` の飛びになり、
+    「セル内の何番目に選ばれた人か」がパネルの記録から読めなくなる。
     """
-    survey = survey_from_dict(_survey_dict(sample_overlap="disjoint"))
+    survey = survey_from_dict(_survey_dict())
     storage = _prepare(spark, personas_frame, tmp_path, survey)
     screen_survey(spark, survey, storage, client=FakeClient())
 
     main_rows = [row for row in _panel_rows(spark, storage, survey) if row["role"] == ROLE_MAIN]
     assert sorted(row["cell_rank"] for row in main_rows) == list(range(CELL_SIZE))
-
-    counts = Counter(row["assigned_stimuli"][0] for row in main_rows)
-    assert len(counts) == 3
-    assert set(counts.values()) == {CELL_SIZE // 3}
+    # 全員が全コンセプトを評価する（§5）。
+    assert all(list(row["assigned_stimuli"]) == ["c1", "c2", "c3"] for row in main_rows)
 
 
 def test_rerun_does_not_ask_again(spark, personas_frame, tmp_path):

@@ -1,7 +1,11 @@
 """パネル構築（`SPEC_PHASE1.md` §2.2, §4, §5）。
 
-`select_members`（誰を選ぶか）と `apply_assignment`（何をどの順で見せるか）を束ね、
+`select_members`（誰を選ぶか）と `_assigned_stimuli`（何を見せるか）を束ね、
 `panels` テーブルに書き出す。
+
+**提示設計は反実仮想モナディック固定**（§5）。全ペルソナが全コンセプトを定義順に
+1件ずつ評価する。誰が何を見るかに選択の余地が無いので、割り当ては定義順の配列を
+そのまま置くだけになる。
 """
 
 from __future__ import annotations
@@ -11,7 +15,6 @@ from typing import TYPE_CHECKING
 
 from persona_sim.config import StorageConfig
 from persona_sim.errors import PersonaSimError
-from persona_sim.panel.assignment import apply_assignment
 from persona_sim.panel.quotas import allocate_cell_sizes, cell_weights
 from persona_sim.panel.sampling import (
     ROLE_CANDIDATE,
@@ -60,6 +63,22 @@ def candidate_sizes(survey: SurveyDefinition) -> dict[str, int]:
     return {cell_id: size * factor for cell_id, size in allocate_cell_sizes(survey).items()}
 
 
+def _assigned_stimuli(members: DataFrame, survey: SurveyDefinition) -> DataFrame:
+    """`assigned_stimuli` を付ける。全ペルソナが全コンセプトを定義順に評価する（§5）。
+
+    重複は含まれない——同じ人に同じコンセプトが2回当たらないことは、配列が定義順の
+    コンセプトIDそのものであることから自明に成り立つ（§5.0）。
+    """
+    from pyspark.sql import functions as F
+
+    ids = [stimulus.id for stimulus in survey.stimuli]
+    if not ids:
+        raise PersonaSimError("コンセプトが1件も無い")
+    return members.withColumn(
+        "assigned_stimuli", F.array(*[F.lit(stimulus_id) for stimulus_id in ids])
+    )
+
+
 def build_panel(
     spark: SparkSession,
     survey: SurveyDefinition,
@@ -103,9 +122,7 @@ def build_panel(
             "assigned_stimuli", F.array().cast("array<string>")
         )
     else:
-        assigned = apply_assignment(
-            members, survey.design, [stimulus.id for stimulus in survey.stimuli], survey.panel.seed
-        )
+        assigned = _assigned_stimuli(members, survey)
 
     weight_map = F.create_map(
         *[
@@ -233,9 +250,7 @@ def finalize_panel(
     members = spark.createDataFrame(
         main_rows, "persona_uuid string, cell_id string, cell_rank int"
     ).withColumn("role", F.lit(ROLE_MAIN))
-    assigned = apply_assignment(
-        members, survey.design, [stimulus.id for stimulus in survey.stimuli], survey.panel.seed
-    )
+    assigned = _assigned_stimuli(members, survey)
     main_panel = (
         assigned.withColumn("survey_id", F.lit(survey.survey_id))
         .withColumn("weight", weight_map[F.col("cell_id")])

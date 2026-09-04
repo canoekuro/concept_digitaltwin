@@ -17,7 +17,7 @@ from persona_sim.llm.fake import FakeClient
 from persona_sim.panel.loader import survey_from_dict
 from persona_sim.panel.schema import StructuredOutput
 from persona_sim.panel.validate import validate_static
-from persona_sim.run.memory import plan_remembers, retains_memory, session_groups
+from persona_sim.run.memory import plan_remembers, session_groups
 from persona_sim.run.session import (
     SessionContext,
     StructuredOutputState,
@@ -34,13 +34,12 @@ INTENT = ("q_intent_1", "q_intent_2", "q_intent_3")
 REASON = ("q_reason_1", "q_reason_2", "q_reason_3")
 
 
-def _survey(remembers=None, *, shape="none", **design_overrides):
+def _survey(remembers=None, *, shape="none"):
     """`shape` はかつて `design.memory` の3値で表していた形（`with_remember`）。
 
     `remembers` を渡すと、その設問だけ上書きする。
     """
     data = base_survey_dict()
-    data["design"].update(design_overrides)
     with_remember(data, shape)
     for question in data["questions"]:
         if remembers and question["id"] in remembers:
@@ -93,18 +92,30 @@ def test_all_reaches_across_concepts():
 
     assert plans["q_intent_2"] == ("q_intent_1", "q_reason_1")
 
+# --------------------------------------------------------------------------- #
+# プロンプトの組み立て
+# --------------------------------------------------------------------------- #
 
-def test_all_does_not_depend_on_anything_outside_the_question():
+
+class _Spy(FakeClient):
+    """送ったメッセージ列を全部控えるクライアント。"""
+
+    def __init__(self):
+        super().__init__()
+        self.sent: list[list] = []
+
+    def complete(self, messages, **kwargs) -> Completion:
+        self.sent.append(list(messages))
+        return super().complete(messages, **kwargs)
+
+
+def test_all_means_every_preceding_question_across_concepts():
     """`all` の意味は調査定義の他の設定に左右されない（回帰）。
 
     かつては調査全体の設定でコンセプト内／またぎが切り替わり、既定の組み合わせでは
     未定義のまま「またぐ」側に倒れていた。設定を消して意味を1つに固定した。
     """
-    plain = plan_remembers(_survey({"q_intent_3": "all"}))
-    rotated = plan_remembers(_survey({"q_intent_3": "all"}, rotation="random"))
-
-    assert plain["q_intent_3"] == rotated["q_intent_3"]
-    assert plain["q_intent_3"] == (
+    assert plan_remembers(_survey({"q_intent_3": "all"}))["q_intent_3"] == (
         "q_intent_1",
         "q_reason_1",
         "q_intent_2",
@@ -162,31 +173,6 @@ def test_questions_joined_by_remember_share_one_session():
 
     joined = next(group for group in groups if "q_reason_2" in group)
     assert joined == ("q_intent_1", "q_intent_2", "q_reason_2")
-
-
-def test_retains_memory_sees_question_level_settings():
-    """記憶の有無は設問側の指定だけで決まる（順序効果の判定に効く）。"""
-    assert not retains_memory(_survey())
-    assert retains_memory(_survey({"q_reason_1": ["q_intent_1"]}))
-
-
-# --------------------------------------------------------------------------- #
-# プロンプトの組み立て
-# --------------------------------------------------------------------------- #
-
-
-class _Spy(FakeClient):
-    """送ったメッセージ列を全部控えるクライアント。"""
-
-    def __init__(self):
-        super().__init__()
-        self.sent: list[list] = []
-
-    def complete(self, messages, **kwargs) -> Completion:
-        self.sent.append(list(messages))
-        return super().complete(messages, **kwargs)
-
-
 def _run(survey, panel_rows=PANEL_ROWS):
     client = _Spy()
     ctx = SessionContext(
@@ -318,7 +304,7 @@ def test_an_out_of_range_slot_fails_legibly_at_run_time():
     stimuli = {stimulus.id: stimulus for stimulus in survey.stimuli}
 
     with pytest.raises(SurveyDefinitionError, match="範囲外"):
-        stimulus_for(question, ["c1"], stimuli, simultaneous=False)
+        stimulus_for(question, ["c1"], stimuli)
 
 
 def test_mismatched_options_under_one_measure_are_rejected():
@@ -343,10 +329,9 @@ def test_legacy_questions_without_slot_are_rejected():
         survey_from_dict(data)
 
 
-def test_legacy_questions_are_fine_when_only_one_concept_is_shown():
-    """m == 1 なら旧形式と新形式の展開が一致するので、そのまま読んでよい。"""
-    data = base_survey_dict()
-    data["design"]["sample_overlap"] = "disjoint"
+def test_slot_may_be_omitted_when_there_is_only_one_concept():
+    """コンセプト1件なら slot は既定の 1 で足りる。"""
+    data = base_survey_dict(slots=1)
     data["questions"] = [
         {"id": "q_only", "text": "買いたいですか。", "type": "single", "options": ["はい", "いいえ"]}
     ]

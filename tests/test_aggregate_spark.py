@@ -60,10 +60,6 @@ def _survey_dict(**overrides) -> dict:
         {"id": "c1", "name": "コンセプトA", "text": "内容A"},
         {"id": "c2", "name": "コンセプトB", "text": "内容B"},
     ]
-    data["design"] = {
-        "sample_overlap": "same",
-        "presentation": "sequential",
-    }
     data["main_survey"]["model"]["concurrency"] = 8
     data["output"] = {
         "segments": ["total", "sex", "sex_x_age_band_10", "cell_id"],

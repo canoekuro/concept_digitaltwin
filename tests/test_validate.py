@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import pytest
 
+from persona_sim.errors import SurveyDefinitionError
 from persona_sim.panel.loader import survey_from_dict
 from persona_sim.panel.validate import validate_static
 from tests.conftest import base_survey_dict, with_remember
@@ -23,71 +24,30 @@ def test_base_survey_passes(survey_dict):
 
 
 # --------------------------------------------------------------------------- #
-# E6: 提示設計3軸の整合（§5）
+# 提示設計は反実仮想モナディック固定（§5）
 # --------------------------------------------------------------------------- #
 
 
-def test_simultaneous_requires_same():
+def test_the_design_block_is_not_accepted():
+    """提示設計は設定で変えられない。書いても黙って無視しない。"""
     data = base_survey_dict()
-    data["design"]["presentation"] = "simultaneous"
-    data["design"]["sample_overlap"] = "disjoint"
-    report = validate_static(survey_from_dict(data))
-    assert "E6" in _codes(report.errors)
+    data["design"] = {"sample_overlap": "disjoint"}
+    with pytest.raises(SurveyDefinitionError, match="design"):
+        survey_from_dict(data)
 
 
-def test_same_rejects_stimuli_per_persona():
+def test_every_persona_evaluates_every_concept():
     data = base_survey_dict()
-    data["design"]["stimuli_per_persona"] = 2
-    report = validate_static(survey_from_dict(data))
-    assert "E6" in _codes(report.errors)
+    survey = survey_from_dict(data)
+    assert survey.stimuli_per_persona == survey.stimuli_count == 3
 
 
-def test_disjoint_rejects_multiple_stimuli():
+def test_questions_must_cover_every_concept():
+    """コンセプト3件に対して slot が2つしか無ければ、3件目が黙って聞かれずに消える。"""
     data = base_survey_dict()
-    data["design"]["sample_overlap"] = "disjoint"
-    data["design"]["stimuli_per_persona"] = 2
-    report = validate_static(survey_from_dict(data))
-    assert "E6" in _codes(report.errors)
-
-
-def test_disjoint_allows_explicit_one():
-    data = base_survey_dict(slots=1)
-    data["design"]["sample_overlap"] = "disjoint"
-    data["design"]["stimuli_per_persona"] = 1
-    assert validate_static(survey_from_dict(data)).ok
-
-
-def test_allow_overlap_requires_stimuli_per_persona():
-    data = base_survey_dict()
-    data["design"]["sample_overlap"] = "allow_overlap"
-    report = validate_static(survey_from_dict(data))
-    assert "E6" in _codes(report.errors)
-
-
-@pytest.mark.parametrize("value", [1, 3, 4])
-def test_allow_overlap_rejects_out_of_range(value):
-    """コンセプト3件のとき m は 2 のみが有効（1 は disjoint、3 は same）。"""
-    data = base_survey_dict()
-    data["design"]["sample_overlap"] = "allow_overlap"
-    data["design"]["stimuli_per_persona"] = value
-    report = validate_static(survey_from_dict(data))
-    assert "E6" in _codes(report.errors)
-
-
-def test_allow_overlap_accepts_middle_value():
-    data = base_survey_dict(slots=2)
-    data["design"]["sample_overlap"] = "allow_overlap"
-    data["design"]["stimuli_per_persona"] = 2
-    assert validate_static(survey_from_dict(data)).ok
-
-
-def test_balanced_rotation_without_memory_warns():
-    """記憶が無ければ順序効果は起きないのでラテン方格は無意味（停止はしない）。"""
-    data = base_survey_dict()
-    data["design"]["rotation"] = "balanced"
-    report = validate_static(survey_from_dict(data))
-    assert report.ok
-    assert "W_ROTATION" in _codes(report.warnings)
+    data["questions"] = [q for q in data["questions"] if q["slot"] != 3]
+    with pytest.raises(SurveyDefinitionError, match="slot"):
+        survey_from_dict(data)
 
 
 def test_unused_named_system_prompt_warns():
@@ -105,14 +65,6 @@ def test_a_referenced_system_prompt_does_not_warn():
     for question in data["questions"]:
         question["system"] = "novelty"
     assert not validate_static(survey_from_dict(data)).warnings
-
-
-def test_balanced_rotation_with_memory_does_not_warn():
-    """記憶を持つ設問があれば順序効果が起きうるので、ラテン方格は意味を持つ。"""
-    data = with_remember(base_survey_dict(), "full_session")
-    data["design"]["rotation"] = "balanced"
-    report = validate_static(survey_from_dict(data))
-    assert not report.warnings
 
 
 # --------------------------------------------------------------------------- #
@@ -258,8 +210,6 @@ def test_empty_pass_if_is_rejected():
 
 def test_assume_requires_conditions():
     """条件の文言が無ければ、何もペルソナに付与できない。"""
-    from persona_sim.errors import SurveyDefinitionError
-
     data = base_survey_dict()
     data["screening"] = _screener(mode="assume", conditions=[])
     with pytest.raises(SurveyDefinitionError) as excinfo:
@@ -325,14 +275,13 @@ def test_estimate_for_same_multiplies_sessions_by_stimuli():
     assert estimate.effective_n_per_stimulus == 4
 
 
-def test_estimate_for_disjoint_divides_effective_n():
-    data = base_survey_dict(slots=1)
-    data["design"]["sample_overlap"] = "disjoint"
-    estimate = validate_static(survey_from_dict(data)).estimate
+def test_estimate_follows_the_concept_count():
+    """コンセプト1件ならセッションも1人1件。全員が全案を見るので有効nは全員分。"""
+    estimate = validate_static(survey_from_dict(base_survey_dict(slots=1))).estimate
     assert estimate is not None
     assert estimate.stimuli_per_persona == 1
     assert estimate.sessions == 4 * 1 * 2
-    assert estimate.effective_n_per_stimulus == 4 // 3
+    assert estimate.effective_n_per_stimulus == 4
 
 
 def test_answers_equal_sessions_without_memory():

@@ -25,7 +25,6 @@ from persona_sim.llm.client import (
     StructuredOutputUnsupported,
 )
 from persona_sim.panel.schema import (
-    Presentation,
     QuestionType,
     Stimulus,
     StructuredOutput,
@@ -39,11 +38,6 @@ from persona_sim.run.prompt import (
     presented_options,
     replayed_messages,
 )
-
-#: 同時提示（`presentation: simultaneous`）のときの `responses.stimulus_id`。
-#: 回答が特定の1案に紐づかないため、予約値で「全案を同時に見せた」ことを表す。
-#: 何を見せたかは `panels.assigned_stimuli` から復元できる。
-ALL_STIMULI = "*"
 
 #: コンセプトを見せないセッション（スクリーニング。§4.2）で使う `stimulus_id`。
 #: `screener_responses` には書き出さない（コンセプトに紐づかないため）。
@@ -201,7 +195,6 @@ def build_sessions(
     コンセプト外側・ペルソナ内側に回せる。
     """
     stimuli_by_id = {stimulus.id: stimulus for stimulus in survey.stimuli}
-    simultaneous = survey.design.presentation is Presentation.SIMULTANEOUS
     questions_by_id = {question.id: question for question in survey.questions}
     remembers = plan_remembers(survey)
     groups = session_groups(survey)
@@ -216,7 +209,6 @@ def build_sessions(
                     list(row["assigned_stimuli"]),
                     stimuli_by_id,
                     remembers[question_id],
-                    simultaneous=simultaneous,
                 )
                 for question_id in group
             ),
@@ -242,17 +234,14 @@ def _unit(
     assigned: Sequence[str],
     stimuli_by_id: Mapping[str, Stimulus],
     remembers: tuple[str, ...],
-    *,
-    simultaneous: bool,
 ) -> Unit:
     """1設問ぶんの実行単位。コンセプトは `slot` からペルソナの提示順で引く。"""
-    stimuli = stimulus_for(question, assigned, stimuli_by_id, simultaneous=simultaneous)
+    stimuli = stimulus_for(question, assigned, stimuli_by_id)
     return Unit(
         persona_uuid=persona_uuid,
-        # 同時提示は回答が特定の1案に紐づかないので予約値を使う（§2.3）。
-        stimulus_id=ALL_STIMULI if simultaneous else stimuli[0].id,
+        stimulus_id=stimuli[0].id,
         question_id=question.id,
-        sequence=1 if simultaneous else question.slot,
+        sequence=question.slot,
         stimuli_to_present=stimuli,
         remembers=remembers,
     )
@@ -418,11 +407,6 @@ def _fallback_stimuli(unit: Unit, ctx: SessionContext) -> tuple[Stimulus, ...]:
 
     スクリーニング（§4.2）はコンセプトを見せないので、`NO_STIMULUS` のときは空を返す
     （`build_screener_sessions()` が手で組む Unit がここを通る）。
-
-    **同時提示（`ALL_STIMULI`）はここで補わない。** `ctx.stimuli` は調査定義の記述順で、
-    ペルソナごとの `assigned_stimuli` の順序を持っていない。ここから補うと提示順が
-    定義順に化ける。提示順は `_unit()` が `stimulus_for()` 経由で全ユニットに持たせるのが
-    正しい経路で、そこを通っていれば `ALL_STIMULI` でこの関数には来ない。
     """
     if unit.stimulus_id == NO_STIMULUS:
         return ()

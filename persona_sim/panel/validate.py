@@ -22,18 +22,15 @@ from persona_sim.panel.schema import (
     REASONING_QUESTION_TYPES,
     Endpoint,
     ImageMode,
-    Presentation,
     Question,
     QuestionType,
     QuotaMode,
     RememberMode,
-    Rotation,
-    SampleOverlap,
     ScreenerMode,
     StructuredOutput,
     SurveyDefinition,
 )
-from persona_sim.run.memory import ask_order, retains_memory, session_groups
+from persona_sim.run.memory import ask_order, session_groups
 
 if TYPE_CHECKING:  # pragma: no cover
     from pyspark.sql import DataFrame, SparkSession
@@ -141,7 +138,6 @@ class ValidationReport:
 def validate_static(survey: SurveyDefinition) -> ValidationReport:
     """Spark を使わずに検証できるものすべて。"""
     report = ValidationReport()
-    _check_design(survey, report)
     _check_invariants(survey, report)
     _check_stimuli(survey, report)
     _check_questions(survey, report)
@@ -161,7 +157,7 @@ def estimate(survey: SurveyDefinition) -> Estimate:
     from persona_sim.panel.screening import infer_call_count, screener_session_count
 
     k = survey.stimuli_count
-    m = survey.design.stimuli_count_per_persona(k)
+    m = survey.stimuli_per_persona
     size = survey.panel.size
     screener = survey.screening
 
@@ -191,58 +187,6 @@ def estimate(survey: SurveyDefinition) -> Estimate:
 # --------------------------------------------------------------------------- #
 # 静的検証
 # --------------------------------------------------------------------------- #
-
-
-def _check_design(survey: SurveyDefinition, report: ValidationReport) -> None:
-    """提示設計2軸の整合（E6, §5）。記憶は設問側なのでここには無い。"""
-    design = survey.design
-    k = survey.stimuli_count
-    m = design.stimuli_per_persona
-
-    if design.presentation is Presentation.SIMULTANEOUS and design.sample_overlap is not SampleOverlap.SAME:
-        report.error(
-            "E6",
-            "presentation: simultaneous は sample_overlap: same を要求する"
-            "（全コンセプトを同時に見せて比較させるため）",
-        )
-
-    match design.sample_overlap:
-        case SampleOverlap.DISJOINT:
-            if m is not None and m != 1:
-                report.error(
-                    "E6",
-                    f"sample_overlap: disjoint では 1人1コンセプトなので "
-                    f"stimuli_per_persona に {m} は指定できない（省略するか 1）",
-                )
-        case SampleOverlap.SAME:
-            if m is not None:
-                report.error(
-                    "E6",
-                    f"sample_overlap: same では全 {k} 件を評価するので "
-                    f"stimuli_per_persona（{m}）は指定できない",
-                )
-        case SampleOverlap.ALLOW_OVERLAP:
-            if m is None:
-                report.error(
-                    "E6",
-                    f"sample_overlap: allow_overlap では stimuli_per_persona が必須"
-                    f"（2〜{k - 1} の範囲）",
-                )
-            elif not 2 <= m <= k - 1:
-                report.error(
-                    "E6",
-                    f"sample_overlap: allow_overlap の stimuli_per_persona は 2〜{k - 1} の範囲"
-                    f"（指定値: {m}）。1 なら disjoint、{k} なら same を使う",
-                )
-
-    # 記憶は設問の性質なので、設問ごとの指定を見て判定する。
-    if design.rotation is Rotation.BALANCED and not retains_memory(survey):
-        report.warn(
-            "W_ROTATION",
-            "どの設問も記憶を持たない（questions[].remember の指定が無い）ため"
-            "会話履歴が残らず順序効果が発生しないので、"
-            "rotation: balanced（ラテン方格）は意味を持たない",
-        )
 
 
 def _check_invariants(survey: SurveyDefinition, report: ValidationReport) -> None:
@@ -442,7 +386,6 @@ def _check_questions(survey: SurveyDefinition, report: ValidationReport) -> None
                     f"{path}: top_box {out_of_range} が選択肢の範囲（1〜{len(question.options)}）外",
                 )
 
-    _check_slots(survey, report)
     _check_measures(survey, report)
     _check_remember(survey, report)
     _check_system_prompts(survey, report)
@@ -464,30 +407,6 @@ def _check_system_prompts(survey: SurveyDefinition, report: ValidationReport) ->
             f"main_survey.prompt.systems: {', '.join(unused)} を"
             "どの設問も指していない。書いた文面が1問にも当たっていないので、"
             "使わせたい設問に system: を書くこと",
-        )
-
-
-def _check_slots(survey: SurveyDefinition, report: ValidationReport) -> None:
-    """`slot` が設計と噛み合っているか（E6, §3.1）。
-
-    **見るのは同時提示のときだけ。** `1..m` の被覆と範囲は
-    `panel/loader.py::_reject_unusable_questions()` が読み込みの時点で止めるので、
-    ここには不備のある調査定義が届かない（`survey_from_dict()` が
-    `SurveyDefinition` を組み立てる唯一の場所）。届かない検査をここに置くと、
-    一度も発火しない検査を持ち続けることになる。
-
-    同時提示だけ残るのは、ローダーがこの場合 slot の判定そのものを飛ばすため
-    （全案を1度に見せるので被覆の概念が無い）。書かれた `slot` は無視されるだけで
-    結果は変わらないので、停止ではなく報告でよい。
-    """
-    if survey.design.presentation is not Presentation.SIMULTANEOUS:
-        return
-    written = [q.id for q in survey.questions if q.slot != 1]
-    if written:
-        report.error(
-            "E6",
-            f"presentation: simultaneous では slot を書けない（全案を1度に見せるため）。"
-            f"該当: {', '.join(written)}",
         )
 
 

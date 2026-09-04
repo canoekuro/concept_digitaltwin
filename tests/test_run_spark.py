@@ -47,11 +47,7 @@ def _survey_dict(*, memory="none", **design_overrides) -> dict:
         {"cell_id": "M_20_40s", "sex": "男", "age_min": 20, "age_max": 49, "n": PANEL_SIZE}
     ]
     data["stimuli"] = [{"id": "c1", "name": "コンセプトA", "text": "内容A"}]
-    data["design"] = {
-        "sample_overlap": "same",
-        "presentation": "sequential",
-        **design_overrides,
-    }
+    data.update(design_overrides)
     data["main_survey"]["model"]["concurrency"] = 8
     return with_remember(data, memory)
 

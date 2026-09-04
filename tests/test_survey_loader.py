@@ -16,12 +16,8 @@ from persona_sim.panel.loader import (
     survey_from_record,
 )
 from persona_sim.panel.schema import (
-    Design,
     PersonaCardConfig,
-    Presentation,
     PromptConfig,
-    Rotation,
-    SampleOverlap,
     ScreenerLogic,
 )
 from tests.conftest import base_survey_dict
@@ -38,14 +34,10 @@ def test_base_survey_loads(survey_dict):
     assert survey.panel.quotas.cells[0].conditions.sex == "男"
 
 
-def test_design_defaults_are_counterfactual_monadic():
-    """design を省略したら same × sequential（§5.3）。記憶は設問側の既定（＝持たない）。"""
-    data = base_survey_dict()
-    del data["design"]
-    survey = survey_from_dict(data)
-    assert survey.design.sample_overlap is SampleOverlap.SAME
-    assert survey.design.presentation is Presentation.SEQUENTIAL
-    assert survey.design.rotation is Rotation.NONE
+def test_the_design_is_counterfactual_monadic(survey_dict):
+    """全ペルソナが全コンセプトを評価し、設問どうしは独立している（§5.3）。"""
+    survey = survey_from_dict(survey_dict)
+    assert survey.stimuli_per_persona == survey.stimuli_count
     assert all(not q.remember.retains for q in survey.questions)
 
 
@@ -125,8 +117,8 @@ def test_new_structure_round_trips():
 def test_unknown_key_is_rejected():
     """綴り違いを検出する。"""
     data = base_survey_dict()
-    data["design"]["stimulus_per_persona"] = 2  # 正しくは stimuli_per_persona
-    with pytest.raises(SurveyDefinitionError, match="stimulus_per_persona"):
+    data["panel"]["sees"] = 42  # 正しくは seed
+    with pytest.raises(SurveyDefinitionError, match="sees"):
         survey_from_dict(data)
 
 
@@ -142,10 +134,10 @@ def test_unsupported_question_types_are_rejected(question_type):
 def test_unknown_enum_value_lists_allowed_values():
     """綴りを間違えたとき、書ける値が読み取れること。"""
     data = base_survey_dict()
-    data["design"]["sample_overlap"] = "forever"
+    data["panel"]["quotas"]["mode"] = "forever"
     with pytest.raises(SurveyDefinitionError) as excinfo:
         survey_from_dict(data)
-    assert "disjoint" in str(excinfo.value)
+    assert "proportion" in str(excinfo.value)
 
 
 def test_count_mode_requires_n():
@@ -190,7 +182,7 @@ def test_sample_yaml_is_valid():
     sample = Path(__file__).resolve().parents[1] / "examples" / "survey_sample.yaml"
     survey = load_survey(sample)
     assert survey.stimuli_count == 3
-    assert survey.design.sample_overlap is SampleOverlap.SAME
+    assert survey.stimuli_per_persona == 3
 
     report = validate_static(survey)
     assert report.ok, [str(issue) for issue in report.errors]
@@ -587,6 +579,7 @@ def test_record_does_not_read_how_it_was_asked():
     data = base_survey_dict()
     data["main_survey"]["prompt"] = {"system": "あなたは架空の人物です。"}
     data["main_survey"]["persona_card"] = {"attributes": []}
+    # 記録には提示設計を書けた頃のものが残る。読まずに素通りすること。
     data["design"] = {"sample_overlap": "disjoint"}
 
     survey = survey_from_record(data)
@@ -594,7 +587,6 @@ def test_record_does_not_read_how_it_was_asked():
     assert survey.prompt == PromptConfig()
     assert survey.persona_card == PersonaCardConfig()
     assert survey.model == RECORD_MODEL
-    assert survey.design == Design()
 
 
 def test_record_with_the_old_flat_reasoning_rule_is_readable():

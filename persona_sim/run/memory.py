@@ -24,7 +24,6 @@ from collections.abc import Mapping, Sequence
 
 from persona_sim.errors import SurveyDefinitionError
 from persona_sim.panel.schema import (
-    Presentation,
     Question,
     Remember,
     RememberMode,
@@ -36,11 +35,8 @@ from persona_sim.panel.schema import (
 def ask_order(survey: SurveyDefinition) -> tuple[Question, ...]:
     """ペルソナに聞く順番。`slot` 昇順、同じ slot の中は定義順。
 
-    `presentation: simultaneous` は全案を1度に見せるので slot を持たず、定義順そのまま。
     並べ替えは安定ソートなので、同じ slot 内の記述順は保たれる。
     """
-    if survey.design.presentation is Presentation.SIMULTANEOUS:
-        return survey.questions
     return tuple(sorted(survey.questions, key=lambda question: question.slot))
 
 
@@ -51,14 +47,6 @@ def resolve_remember(survey: SurveyDefinition) -> dict[str, Remember]:
     実際にどの設問を再生するかへの展開は `plan_remembers()` が行う。
     """
     return {question.id: question.remember for question in survey.questions}
-
-
-def retains_memory(survey: SurveyDefinition) -> bool:
-    """どれか1問でも記憶を持つか。
-
-    順序効果が起きうるかの判定に使う（`rotation: balanced` の意味の有無など）。
-    """
-    return any(remember.retains for remember in resolve_remember(survey).values())
 
 
 def _replayed(remember: Remember, preceding: Sequence[Question]) -> tuple[str, ...]:
@@ -158,25 +146,18 @@ def stimulus_for(
     question: Question,
     assigned: Sequence[str],
     stimuli_by_id: Mapping[str, Stimulus],
-    *,
-    simultaneous: bool,
 ) -> tuple[Stimulus, ...]:
-    """その設問で提示するコンセプト。
-
-    `simultaneous` なら割り当てられた全件を**そのペルソナの提示順で**返す。
-    そうでなければ `slot` 番目の1件。
+    """その設問で提示するコンセプト。`slot` 番目の1件。
 
     ここが `assigned`（＝`panels.assigned_stimuli`）だけを見ているのが要点。調査定義の
     記述順（`survey.stimuli`）から引くと、ペルソナごとの提示順が失われる
-    （`rotation: random` / `balanced` で `SPEC_PHASE1.md` §9.1 の再現性が壊れる）。
+    （`SPEC_PHASE1.md` §9.1 の再現性が壊れる）。
 
-    範囲外の `slot` は `validate` が E6 で止める（`_check_slots`）。**それでもここで
-    確かめるのは、`run` が `validate` を通らずに実行できるため**（`cli.py`）。素の
+    範囲外の `slot` は読み込みの時点で止まる（`loader._reject_uncovered_slots()`）。
+    **それでもここで確かめるのは、記録から復元した定義など別経路で来うるため。** 素の
     IndexError だと、100人ぶんのセッションが「list index out of range」で落ちるだけで
     調査定義のどこが悪いのか分からない。
     """
-    if simultaneous:
-        return tuple(stimuli_by_id[stimulus_id] for stimulus_id in assigned)
     if not 1 <= question.slot <= len(assigned):
         raise SurveyDefinitionError(
             f"questions[{question.id}].slot: {question.slot} は範囲外。"

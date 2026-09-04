@@ -164,8 +164,7 @@ def build_user_message(
 ) -> str | list[dict[str, Any]]:
     """"■あなたのプロフィール" → 提示物 → 設問 の順に連結した [user] メッセージ。
 
-    stimuli が複数のときは提示物ブロックを順に並べる（presentation: simultaneous 用）。
-    ブロック間は空行1つで区切る。
+    stimuli が複数のときは提示物ブロックを順に並べる。ブロック間は空行1つで区切る。
 
     stimulus.image_mode is ImageMode.NATIVE かつ image_uri が指定されている場合は
     list[dict[str, Any]]（テキストパート＋画像パート）として組み立てる。

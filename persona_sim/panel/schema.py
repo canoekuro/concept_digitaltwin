@@ -28,26 +28,6 @@ class SurveyType(StrEnum):
     CONCEPT = "concept"
 
 
-class SampleOverlap(StrEnum):
-    """誰が何を見るか。コンセプト**間**のサンプル関係（§5.2）。
-
-    1ペルソナが評価するコンセプト数 m の連続体として定義される
-    （コンセプト総数を K とすると disjoint=1 / allow_overlap=2〜K-1 / same=K）。
-    どの値でも、同じ人に同じコンセプトが2回当たることはない（§5.0）。
-    """
-
-    DISJOINT = "disjoint"
-    ALLOW_OVERLAP = "allow_overlap"
-    SAME = "same"
-
-
-class Presentation(StrEnum):
-    """どう見せるか（§5.1）。"""
-
-    SEQUENTIAL = "sequential"
-    SIMULTANEOUS = "simultaneous"
-
-
 class RememberMode(StrEnum):
     """1設問がどこまで記憶を持って回答するか（§5.1）。
 
@@ -99,14 +79,6 @@ class Remember:
 
 #: 何も書かなかった設問の記憶。**調査全体の設定からは引かない。**
 NO_MEMORY = Remember(RememberMode.NONE)
-
-
-class Rotation(StrEnum):
-    """提示順の決め方（§5.2）。"""
-
-    NONE = "none"
-    RANDOM = "random"
-    BALANCED = "balanced"
 
 
 class QuotaMode(StrEnum):
@@ -675,61 +647,6 @@ class Stimulus:
 
 
 @dataclass(frozen=True)
-class Design:
-    """提示設計。2軸で指定する（§5）。既定は反実仮想モナディック（§5.3）。
-
-    **「覚えているか」はここには無い。** 記憶は調査全体の性質ではなく設問の性質なので、
-    `questions[].remember` が持つ（§5.1）。
-    """
-
-    sample_overlap: SampleOverlap = SampleOverlap.SAME
-    presentation: Presentation = Presentation.SEQUENTIAL
-    stimuli_per_persona: int | None = None
-    rotation: Rotation = Rotation.NONE
-
-    def stimuli_count_per_persona(self, total_stimuli: int) -> int:
-        """1ペルソナが評価するコンセプト数 m を返す（§5.2）。
-
-        **`stimuli_per_persona` が `sample_overlap` と矛盾していたら送出する。**
-        黙って辻褄の合う値を返すと、呼び出し側が「m はこれだ」と信じて先へ進み、
-        設計の誤りが設問側の誤りとして報告される——`sample_overlap: disjoint` に
-        `stimuli_per_persona: 2` を書いた調査定義が、「m=1 なのに slot 2 の設問がある」
-        と**設問を指して**止まっていた。直すべき行に辿り着けない。
-
-        矛盾の条件をここ1箇所に置くのが要点。呼び出し側（`panel/loader.py` の
-        読み込み時ガード）は例外を捕まえて自分の判定を飛ばし、`validate` が
-        `_check_design()` で本来の理由を E6 として報告する。
-        """
-        match self.sample_overlap:
-            case SampleOverlap.DISJOINT:
-                if self.stimuli_per_persona not in (None, 1):
-                    raise SurveyDefinitionError(
-                        "sample_overlap: disjoint では 1人1コンセプトなので "
-                        f"stimuli_per_persona に {self.stimuli_per_persona} は指定できない"
-                    )
-                return 1
-            case SampleOverlap.SAME:
-                if self.stimuli_per_persona is not None:
-                    raise SurveyDefinitionError(
-                        f"sample_overlap: same では全 {total_stimuli} 件を評価するので "
-                        f"stimuli_per_persona（{self.stimuli_per_persona}）は指定できない"
-                    )
-                return total_stimuli
-            case SampleOverlap.ALLOW_OVERLAP:
-                if self.stimuli_per_persona is None:
-                    raise SurveyDefinitionError(
-                        "sample_overlap: allow_overlap では stimuli_per_persona が必須"
-                    )
-                if not 2 <= self.stimuli_per_persona <= total_stimuli - 1:
-                    raise SurveyDefinitionError(
-                        f"sample_overlap: allow_overlap の stimuli_per_persona は "
-                        f"2〜{total_stimuli - 1} の範囲（指定値: {self.stimuli_per_persona}）"
-                    )
-                return self.stimuli_per_persona
-        raise SurveyDefinitionError(f"未知の sample_overlap: {self.sample_overlap}")
-
-
-@dataclass(frozen=True)
 class Question:
     """1設問。**実行時にも1回しか聞かれない**（§3.1）。
 
@@ -747,9 +664,8 @@ class Question:
     top_box: tuple[int, ...] | None = None
     max_length: int | None = None
     #: 何番目に提示するコンセプトについて聞くか（1始まり）。実行時に
-    #: `panels.assigned_stimuli[slot - 1]` を引く。コンセプトIDではなく**提示順の位置**なので、
-    #: `rotation` や `sample_overlap` による割り当ての違いと直交する。
-    #: `presentation: simultaneous` は全案を同時に見せるので slot を持たない（常に 1）。
+    #: `panels.assigned_stimuli[slot - 1]` を引く。**コンセプトIDではなく提示順の位置**
+    #: なので、パネルの割り当てが変わっても設問側を書き換えずに済む。
     slot: int = 1
     #: コンセプト横断で「同じ設問」として束ねるキー（§8）。省略時は `id` と同じ。
     #: slot ごとに設問を展開すると `id` が別物になるので、コンセプト比較表を組むには
@@ -827,7 +743,6 @@ class SurveyDefinition:
     name: str
     panel: PanelConfig
     stimuli: tuple[Stimulus, ...]
-    design: Design
     questions: tuple[Question, ...]
     #: 本調査のモデル（`main_survey.model`）。
     model: ModelConfig
@@ -844,7 +759,7 @@ class SurveyDefinition:
     screening: ScreeningConfig | None = None
     #: 実行記録から**集計に要る範囲だけ**復元したものか（`loader.survey_from_record()`）。
     #:
-    #: True のとき `model` / `prompt` / `persona_card` / `design` は記録を読んでおらず
+    #: True のとき `model` / `prompt` / `persona_card` は記録を読んでおらず
     #: 既定値のまま入っている。**この定義で実行してはならないし、何をどう聞いたかの
     #: 根拠にもしてはならない。** 実際の設定は `raw`（＝定義の全文）と
     #: `runs.metadata_json` に残っている。
@@ -854,4 +769,13 @@ class SurveyDefinition:
 
     @property
     def stimuli_count(self) -> int:
+        return len(self.stimuli)
+
+    @property
+    def stimuli_per_persona(self) -> int:
+        """1ペルソナが評価するコンセプト数。**全案を1件ずつ順に評価する**（§5）。
+
+        提示設計は反実仮想モナディック固定で、設定では変えられない。同じ人に同じ
+        コンセプトが2回当たることはなく（§5.0）、コンセプトごとの評価者数は揃う。
+        """
         return len(self.stimuli)

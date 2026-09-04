@@ -43,11 +43,6 @@ stimuli:
       【特徴】国産ゆず果汁を使った、甘さ控えめの缶ハイボール。アルコール5%。
       【価格】希望小売価格 205円（350ml）
 
-design:
-  sample_overlap: "same"
-  presentation: "sequential"
-  rotation: "none"
-
 questions:
   - id: "q_intent"
     text: "この商品を購入したいと思いますか。"
