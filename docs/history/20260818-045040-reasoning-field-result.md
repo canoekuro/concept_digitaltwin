@@ -44,7 +44,7 @@ main_survey:
 | `storage/warehouse.py` | `RAW_RESPONSE_COLUMNS` に `answer_reasoning` |
 | `metadata.py` | `model.reasoning_questions` と `model.max_tokens_reasoning` |
 | `app/config/ui_config.yaml` / `examples/survey_sample.yaml` | 文面と予算だけ用意し、設問側は有効にしない |
-| `SPEC_PHASE1.md` §2.3・§3・§6.3・§8・§13 / `docs/GUIDE_SURVEY_DEFINITION.md` §4（新設。以降を繰り下げ） | 仕様と書き方 |
+| `SPEC.md` §2.3・§3・§6.3・§8・§13 / `docs/GUIDE_SURVEY_DEFINITION.md` §4（新設。以降を繰り下げ） | 仕様と書き方 |
 | `AGENTS.md` | 不変条件「思考モードは常に OFF」に、理由を書かせたい場合の行き先を追記（計画には無かったが、レビュー時に真っ先に読まれる場所なので揃えた） |
 
 決めごとは3つ。いずれも利用者と確認済み。
@@ -139,7 +139,7 @@ JSON Schema に `maxLength` は入れていない。strict スキーマでの対
   （`app/views/survey_design.py` が warnings を表示する）
 - 違いを設定ファイルとガイドに明記した: `app/config/ui_config.yaml` の `max_tokens_*`、
   `examples/survey_sample.yaml`、`docs/GUIDE_SURVEY_DEFINITION.md` §4（表を追加）、
-  `SPEC_PHASE1.md` §6.3、`ModelConfig` の docstring
+  `SPEC.md` §6.3、`ModelConfig` の docstring
 
 検証: 非 Spark **951件パス**（この追記で5件追加）・`ruff check` パス。Spark テストは
 この追加が `validate` の警告1本だけで実行経路に触れないため再実行していない

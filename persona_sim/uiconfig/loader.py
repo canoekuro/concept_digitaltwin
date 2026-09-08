@@ -1,4 +1,4 @@
-"""`config/ui_config.yaml` の読み込み。
+"""`app/config/ui_config.yaml` の読み込み。
 
 調査定義ローダ（`persona_sim.panel.loader`）と同じ方針で、**未知のキーは黙って捨てず
 停止する**。綴り違いの設定がそのまま消えると、「設定したのに効いていない」ことに
@@ -34,35 +34,20 @@ from persona_sim.uiconfig.schema import (
     UIConfigError,
 )
 
-#: 既定の設定ファイル。リポジトリ直下からの相対。
-DEFAULT_CONFIG_PATH = Path("config/ui_config.yaml")
-
 _TOP_LEVEL_KEYS = ("survey_defaults", "ui")
 
 _SURVEY_DEFAULTS_KEYS = ("survey_type", "screening", "main_survey", "questions", "output")
 
 _UI_KEYS = ("allocation_patterns", "estimation_benchmarks")
 
-#: 旧構造のキーと、その行き先。黙って無視すると「設定したのに効いていない」ことに
-#: 実行後まで気づけないので、移行先を添えて停止する。
-_MOVED_TOP_LEVEL_KEYS = {
-    "model": "survey_defaults.main_survey.model",
-    "prompt": (
-        "survey_defaults.main_survey.prompt"
-        "（persona_fields は main_survey.persona_card へ、"
-        "infer_system は screening.prompt.system へ、rules.infer は screening.prompt.rule へ）"
-    ),
-    "default_questions": "survey_defaults.questions",
-    "screener": "survey_defaults.screening",
-    "allocation": "ui.allocation_patterns（patterns の中身をそのまま並べる）",
-    "output": "survey_defaults.output（formats は廃止。画面はダウンロード時に生成する）",
-    "estimation_benchmarks": "ui.estimation_benchmarks",
-}
+def load_ui_config(path: str | Path) -> UIConfig:
+    """設定ファイル（`app/config/ui_config.yaml`）を読む。
 
-
-def load_ui_config(path: str | Path | None = None) -> UIConfig:
-    """設定ファイルを読む。`path` 省略時は `config/ui_config.yaml`。"""
-    target = Path(path) if path is not None else DEFAULT_CONFIG_PATH
+    **既定パスは持たない。** 置き場所を決められるのは呼ぶ側だけで、ここに cwd 相対の
+    既定を置くと起動ディレクトリ次第で解決できたりできなかったりする。アプリの解決は
+    `app/lib/context.py` の `DEFAULT_UI_CONFIG_PATH`（`__file__` 基準）が持つ。
+    """
+    target = Path(path)
     if not target.exists():
         raise UIConfigError(f"UI 設定ファイルが無い: {target}")
     return ui_config_from_dict(yaml.safe_load(target.read_text(encoding="utf-8")) or {})
@@ -71,13 +56,6 @@ def load_ui_config(path: str | Path | None = None) -> UIConfig:
 def ui_config_from_dict(data: Mapping[str, Any]) -> UIConfig:
     """dict から組み立てる。ノートブックやテストから直接呼べるようにしてある。"""
     mapping = _as_mapping(data, "")
-    for moved, destination in _MOVED_TOP_LEVEL_KEYS.items():
-        if moved in mapping:
-            raise UIConfigError(
-                f"最上位の {moved}: は {destination} に移した。"
-                "設定を『調査定義の既定値（survey_defaults）』と『画面の設定（ui）』の"
-                "2群に分けたため（docs/SPEC_UI.md §2）"
-            )
     _reject_unknown(mapping, _TOP_LEVEL_KEYS, "")
 
     defaults = _as_mapping(mapping.get("survey_defaults"), "survey_defaults")
@@ -124,17 +102,15 @@ def _screening(source: Any) -> ScreeningDefaults:
     mapping = _as_mapping(source, path)
     _reject_unknown(
         mapping,
-        ("mode", "oversample_factor", "logic", "batch_size", "model", "prompt", "persona_card"),
+        ("oversample_factor", "batch_size", "model", "prompt", "persona_card"),
         path,
     )
     defaults = ScreeningDefaults()
     batch_size = mapping.get("batch_size")
     return ScreeningDefaults(
-        mode=_as_str(mapping.get("mode", defaults.mode), f"{path}.mode"),
         oversample_factor=_as_int(
             mapping.get("oversample_factor", defaults.oversample_factor), f"{path}.oversample_factor"
         ),
-        logic=_as_str(mapping.get("logic", defaults.logic), f"{path}.logic"),
         batch_size=None if batch_size is None else _as_int(batch_size, f"{path}.batch_size"),
         model=_as_mapping(mapping.get("model"), f"{path}.model"),
         prompt=_as_mapping(mapping.get("prompt"), f"{path}.prompt"),
@@ -175,17 +151,6 @@ def _allocation(source: Any) -> tuple[AllocationPattern, ...]:
 def _benchmarks(source: Any) -> Benchmarks:
     path = "ui.estimation_benchmarks"
     mapping = _as_mapping(source, path)
-    # 旧キーは黙って捨てない。単位が「1セッションあたり」から「1回答あたり」に
-    # 変わったので、素通りさせると桁の合った嘘の見積もりが出る。
-    if "survey_session" in mapping:
-        raise UIConfigError(
-            f"{path}.survey_session: は survey_answer に改めた。"
-            "値の単位も1セッションあたりから1回答あたりに変わっている"
-            "（memory の設定でセッション数は回答数と一致しない）。"
-            "avg_input_tokens → input_tokens_per_answer、"
-            "avg_output_tokens → output_tokens_per_answer、"
-            "avg_latency_sec → answers_per_min（件/分・並列度込み）"
-        )
     _reject_unknown(mapping, ("survey_answer", "screener_session", "pricing"), path)
     return Benchmarks(
         survey_answer=_answer_benchmark(mapping.get("survey_answer"), f"{path}.survey_answer"),
@@ -217,18 +182,12 @@ def _session_benchmark(source: Any, path: str) -> SessionBenchmark:
 
 
 def _required_benchmark(source: Any, path: str, keys: Sequence[str]) -> Mapping[str, Any]:
-    """実績値1組を読む前の共通チェック。旧キーの取り違えもここで止める。"""
+    """実績値1組を読む前の共通チェック。
+
+    **キー名に単位が入っている**（`*_per_answer` / `*_per_session`）。1回答あたりと
+    1セッションあたりは `memory` の設定次第で一致しないので、名前で取り違えを防ぐ。
+    """
     mapping = _as_mapping(source, path)
-    for old, new in (
-        ("avg_input_tokens", keys[0]),
-        ("avg_output_tokens", keys[1]),
-        ("avg_latency_sec", keys[2]),
-    ):
-        if old in mapping:
-            raise UIConfigError(
-                f"{path}.{old}: は {new} に改めた。キー名に単位を入れて、"
-                "1回答あたりと1セッションあたりを取り違えないようにしている"
-            )
     _reject_unknown(mapping, keys, path)
     missing = [key for key in keys if mapping.get(key) is None]
     if missing:

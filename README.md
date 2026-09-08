@@ -7,26 +7,27 @@ LLM で生活者ペルソナ群を仮想再現し、コンセプト受容性の�
 `research_system` のコンセプト調査部分を切り出したリポジトリです。JTBD 仮説探索
 （`persona_jtbd`）は `research_system` 側に残っています。
 
-- 全体構想・ガバナンス・フェーズ2以降: [SPEC.md](SPEC.md)
-- **フェーズ1 構築仕様（実装の直接の根拠）**: [SPEC_PHASE1.md](SPEC_PHASE1.md)
+- **構築仕様（実装の直接の根拠）**: [SPEC.md](SPEC.md)
+- 調査定義の書き方: [docs/GUIDE_SURVEY_DEFINITION.md](docs/GUIDE_SURVEY_DEFINITION.md)
+- Web UI の仕様: [docs/SPEC_UI.md](docs/SPEC_UI.md)
 
 ---
 
 ## 現在地
 
-**フェーズ1: パイプライン構築**。M7 を除いて実装済み。調査定義から集計表・xlsx までが1本通ります。
+**M7 を除いて実装済み。** 調査定義から集計表・xlsx までが1本通ります。
 
 | # | マイルストーン | 完了条件 | 状態 |
 |---|---|---|---|
 | M1 | `personas_base` 構築（取り込み・正規化・派生列） | 属性でクエリできる | **完了** |
-| M2 | 調査定義パーサ ＋ `validate` / `panel` | 割り付けどおりのパネルが seed 再現で出る | **完了** |
+| M2 | 調査定義パーサ ＋ 検証 / パネル構築 | 割り付けどおりのパネルが seed 再現で出る | **完了** |
 | M3 | 実行エンジン（single/open、設問ごとの記憶に対応） | 1コンセプト × 100人が完走 | **完了** |
-| M4 | スクリーニング機構 | インシデンスが記録される | **完了** |
-| M5 | 集計・出力（クロス集計表、xlsx） | `SPEC_PHASE1.md` §7.4 の一式が出る | **完了** |
+| M4 | スクリーニング機構 | 通過率が記録される | **完了** |
+| M5 | 集計・出力（クロス集計表、xlsx） | `SPEC.md` §7.3 の一式が出る | **完了** |
 | M6 | 冪等性・再開、品質フラグ、メタデータ出力 | 中断→再開で結果が一致する | **完了** |
 | M7 | 並列化・スループット調整 | 1,000人 × 10コンセプト × 3問が実用時間で完走 | 未着手 |
 
-M1〜M3 で1本通してから M4 以降を足します（`SPEC_PHASE1.md` §12）。M6 は実行エンジンと
+実装順序は `SPEC.md` §12 のとおりです。M6 は実行エンジンと
 書き込み経路を共有するため、M3 と同時に入れました。
 
 ---
@@ -43,16 +44,26 @@ M1〜M3 で1本通してから M4 以降を足します（`SPEC_PHASE1.md` §12�
 集計表出力（トップライン、セグメント別、コンセプト別 + 生データ + 実行メタデータ）
 ```
 
-CLI（`SPEC_PHASE1.md` §10）:
+入口は**ノートブックと Web UI の2つ**です（`SPEC.md` §10）。CLI はありません。
+どちらもライブラリの同じ関数を直接呼びます。
 
-```bash
-persona-sim personas build --shards 1     # personas_base を構築（M1）
-persona-sim validate  survey.yaml            # スキーマ検証・抽出可能性の事前チェック
-persona-sim panel     survey.yaml            # パネル構築のみ（LLM を呼ばない）
-persona-sim screen    survey.yaml            # スクリーニング実行とパネル確定
-persona-sim run       survey.yaml            # 回答生成（中断しても同じコマンドで再開）
-persona-sim aggregate survey.yaml            # 集計（§7）。クロス集計表・比較表・出力一式
-persona-sim export    survey.yaml --xlsx     # 集計をやり直さず aggregates からファイルだけ出す
+| やること | 入口 |
+|---|---|
+| `personas_base` の構築（M1） | `notebooks/quickstart.ipynb`（`personas.build.build_personas_base()`） |
+| 調査を1本通す | `notebooks/run_survey.ipynb`（Databricks ジョブの本体でもある） |
+| 画面から調査を投入・結果を見る | `app/`（Streamlit / Databricks Apps。`deploy/README.md`） |
+
+`run_survey.ipynb` が呼ぶ順序がそのままパイプラインです。
+
+```python
+survey = load_survey(survey_path)          # 調査定義の読み込み
+validate_static(survey)                    # スキーマ検証
+validate_feasibility(spark, personas, survey)  # 抽出可能性の事前チェック（E1）
+build_panel(spark, survey, storage)        # パネル構築（LLM を呼ばない）
+screen_survey(spark, survey, storage)      # スクリーニング実行とパネル確定
+run_survey(spark, survey, storage)         # 回答生成（中断しても同じセルで再開）
+aggregate_survey(spark, survey, storage, output_dir())  # 集計と出力一式（§7）
+write_metadata(spark, survey, run_result, storage, output_dir())
 ```
 
 テーブルの置き場所は環境変数で指定します（秘密情報をコードに置かないため）。
@@ -68,31 +79,23 @@ export PERSONA_SIM_SCHEMA=<schema>
 > まとめています。** 最小の定義から、設問の展開・記憶・スクリーニング・提示設計まで、
 > 書き写して使える形で並べています。以下はその要点の抜粋です。
 
-### 提示設計は2軸で指定する
+### 提示設計は反実仮想モナディック固定
 
-`design` は「誰が何を見るか × どう見せるか」の2軸で書きます（`SPEC_PHASE1.md` §5）。
-従来の `design.type`（monadic 等）は廃止しました。
+**書く項目はありません**（`SPEC.md` §5）。全ペルソナが全コンセプトを定義順に
+1件ずつ、互いに独立したセッションで評価します。サンプル差による交絡が無く、順序効果も
+原理的に発生しません。実査では取れない設計です。
 
-```yaml
-design:
-  sample_overlap: "same"        # disjoint | allow_overlap | same
-  presentation: "sequential"    # sequential | simultaneous
-```
+その代わりセッション数がコンセプト数倍になるので、`validate_static()` が見積もりを表示します。
 
-**「覚えているか」は `design` にありません。** 記憶は調査全体ではなく設問の性質なので、
-`questions[].remember` で設問ごとに指定します（次節）。
-
-既定の `same` × `sequential` は、記憶を持たせなければ**反実仮想モナディック**です。全ペルソナが
-全コンセプトを互いに独立したセッションで評価するため、サンプル差による交絡が無く、
-順序効果も原理的に発生しません。実査では取れない設計です。
-その代わりセッション数がコンセプト数倍になるので、`validate` が見積もりを表示します。
+**「覚えているか」は別です。** 記憶は設問の性質なので、`questions[].remember` で設問ごとに
+指定します（次節）。既定では持たないので、案どうしを独立に評価させたうえで直接比べられます。
 
 ### 設問は提示スロットに紐づき、記憶は設問ごとに指定する
 
-`questions` は全コンセプトに繰り返すテンプレートではありません（`SPEC_PHASE1.md` §3.1）。
+`questions` は全コンセプトに繰り返すテンプレートではありません（`SPEC.md` §3.1）。
 各設問が `slot`（そのペルソナが**何番目に見るコンセプト**について聞くか）に紐づき、
 1人が評価するコンセプトの数だけ並べます。`measure` はコンセプト横断で同じ問いとして
-束ねる集計キーで、コンセプト比較表はこれで組まれます。
+束ねる集計キーで、集計表はこれで組まれます。
 
 ```yaml
 questions:
@@ -127,52 +130,36 @@ Q4 が見るのは Q3 だけです。
 記憶で繋がった設問は同じセッションで実行されるため、`remember` を書くとセッション数
 （＝費用）も変わります。`validate` の見積もりに反映されます。
 
-### 対象者条件（スクリーニング）は3方式から選ぶ
+### 対象者条件（スクリーニング）
 
-`screening.mode` で選びます。**費用と、得られるものが違います。**
+`screening` は任意です。書かなければ割り付けどおりのパネルをそのまま使います。
 
-| | `ask`（実際に聞く） | `assume`（前提として与える） | `infer`（蓋然性で選ぶ） |
-|---|---|---|---|
-| 書き方 | `questions`（設問文・選択肢・`pass_if`） | `conditions`（自然言語） | `conditions`（自然言語） |
-| 費用 | `panel.size × oversample_factor × 条件数` セッション | **0** | `候補数 ÷ batch_size` 回 |
-| インシデンス | **実測できる**（実査と突き合わせられる） | **測れない**。`null` として記録します | **推定値**。実測とは別の欄に記録します |
-| パネルの構成 | 割り付けセル内で条件該当者に偏る | 割り付けどおりのまま、行動だけを付与する | `ask` と同じく条件該当者に偏る |
-| 内的整合性 | ペルソナ本人の記述と矛盾しない | **ナラティブと矛盾しうる** | ナラティブを読んで選ぶので矛盾しにくい |
-
-どれが正しいというものではなく、**答えている問いが違います**。`ask` は「条件該当者は
-どう反応するか」、`assume` は「割り付けどおりの構成の人が、その行動を持つとしたらどう反応するか」、
-`infer` は「条件に当てはまりそうな人が、その行動を持つとしたらどう反応するか」。
-
-**方式ごとに書ける形が違います。** `ask` は本人に選択肢を見せて答えさせるので、
-`questions` に設問文・選択肢・`pass_if` が要ります。`assume` と `infer` は選択肢を提示
-しないので、`conditions` に対象者条件を自然言語で書くだけです。
+**方式は1つです。** 対象者条件を自然言語で書くと、候補を `batch_size` 人ずつまとめて
+判定用の LLM に見せ、条件に合致する蓋然性が高い人にだけ属性を付けます。費用は
+`候補数 ÷ batch_size` 回です。
 
 ```yaml
 screening:
-  mode: "infer"
+  oversample_factor: 4
+  batch_size: 20
   conditions:
     - "缶チューハイ・缶ハイボールを月1回以上飲む"
 ```
 
-書く場所を間違えると、移し方を添えて読み込み時に停止します。黙って無視すると
-「条件を書いたのに効いていない」ことに実行後まで気づけないためです。
+判定に使うモデルは `screening.model`、判定プロンプトは `screening.prompt`、判定に見せる
+ペルソナ情報は `screening.persona_card` で指定できます。条件をどう結合するか（すべて
+満たすのか、いずれかで足りるのか）は `screening.prompt.rule` の文面に書きます。
 
-`infer` は `ask` の費用と `assume` の矛盾の中間を取る方式です。候補を `batch_size` 人ずつ
-まとめて判定用の LLM に見せ、条件に合致する蓋然性が高い人にだけ属性を付けます。
-判定に使うモデルは `screening.model`、判定プロンプトは `screening.prompt`、
-判定に見せるペルソナ情報は `screening.persona_card` で指定できます。
+**選択肢や `pass_if` は書けません。** 本人に選択肢を見せて答えさせないので、書いても
+使い道がありません。書けば未知のキーとして読み込み時に停止します。
 
-> **`infer` の通過率は推定値です。** 本人には聞いていないので、`ask` の実測値と
-> 同じものとして読まないでください。判定結果には `inferred` フラグが立ちます。
+> **通過率は推定値です。** 本人には聞いていないので実測はできません。実査のインシデンスと
+> 同じものとして読まないでください。`runs.screener_incidence_estimated` に別枠で記録し、
+> 判定結果には `inferred` フラグが立ちます。
 
-どの方式でも、確定したペルソナのカード末尾に前提ブロックが付きます（記憶を持たない設問では
-会話履歴で前提を引き継げないため）。見出しで由来が分かるようにしてあります
-——【調査前の確認】が本人の回答、【前提】がこちらが与えた条件、【推定前提】が判定で
-付与した条件です。
-
-`ask` と `infer` のときだけ `panel` と `run` のあいだに `screen` が入ります。`assume` では
-`screen` は「実行不要」と表示して何もしないので、`validate && panel && screen && run`
-をそのまま書けます。
+確定したペルソナのカード末尾には前提ブロックが付きます（記憶を持たない設問では会話履歴で
+前提を引き継げないため）。見出し【推定前提】が、本人が答えたのでも一律に与えたのでもなく
+判定で付与した条件だという由来を残します。
 
 ### 推論エンドポイント
 
@@ -185,30 +172,31 @@ screening:
 
 ### 集計と出力
 
-`persona-sim aggregate` が `outputs/{survey_id}/` に一式を書きます（`SPEC_PHASE1.md` §7.4）。
+`aggregate_survey()` が `outputs/{survey_id}/` に一式を書きます（`SPEC.md` §7.3）。
 
 | ファイル | 内容 |
 |---|---|
-| `crosstab_{stimulus_id}_{measure}.csv` | クロス集計表。表側＝セグメント、表頭＝選択肢 |
-| `concept_summary.csv` / `concept_summary_by_segment.csv` | コンセプト比較表（全体 / セグメント別） |
+| `crosstab_{measure}.csv` | クロス集計表。表側＝コンセプト × セグメント、表頭＝選択肢 |
+| `crosstab_all.csv` | 全設問を1枚に積んだクロス集計表。measure 横断で見比べる用 |
 | `open_ends.csv` | 自由回答＋ペルソナの主要属性 |
 | `panel_composition.csv` | 実際のパネル構成とインシデンス |
 | `responses_raw.csv` | 生データ全件 |
-| `report.xlsx` | 上記をシート分けした1ファイル。先頭に「概要」シート |
-| `run_metadata.json` | 実行メタデータ（`run` が書く） |
+| `report.xlsx` | 上記の表をシート分けした1ファイル。先頭に「概要」シート |
+| `run_metadata.json` | 実行メタデータ（`run_survey()` が書く） |
 
 読むときの前提:
 
 - **`n` はウェイト適用前の実数、`%` はウェイト適用後**。ウェイトが全て 1.0 なら一致します
 - **平均は選択肢番号を逆順スコア化した値**（5段階なら 1→5点）。順序尺度の設問だけ出します
 - **品質フラグの立った回答も集計に含めています**（§8）。除いた場合の n を併記してあります
-- CSV / xlsx は人が読む用に整形した値（`12.3%`）です。**機械可読な生の値は `aggregates`
-  テーブル**（§2.5）にあります。`export` はそこから表を組み直します
+- CSV / xlsx は人が読む用に整形した値（`12.3%`）です。機械可読な生の値が要るなら
+  `build_result()` が返す `Crosstab` を読んでください。**集計結果はテーブルに保存しません**
+  （保存した表と生データが食い違ったとき、どちらが正しいか決められないため）
 - コンセプト間の**相対比較**として読んでください。統計的推測の指標は算出しません
 
 > **M5 より前に作った `responses` / `screener_responses` は作り直してください。**
 > 複数回答を保存するため `answer_codes` 列を足しました。列の無い既存テーブルには
-> 追記できません（`persona-sim panel` からやり直すのが確実です）。
+> 追記できません（`build_panel()` からやり直すのが確実です）。
 
 > **既存の `runs` テーブルに `survey_name` と `survey_type` を足してください。**
 > 調査一覧を出すたびに `metadata_json` を掘るのを避けるため、調査名と調査の種類（§3.0）を
@@ -222,7 +210,7 @@ screening:
 > 作り直しても構いませんが、`runs` は実行履歴なので通常は列追加で足ります。
 
 > **用語と列の変更にともない、既存テーブルはすべて作り直してください。**
-> 対象は `responses` / `screener_responses` / `panels` / `runs` / `aggregates` です。
+> 対象は `responses` / `screener_responses` / `panels` / `runs` です。
 >
 > - 「ジョブ」は社内で別の意味を持つ語なので、調査基盤の中心概念は **`survey`／調査** に
 >   統一しました。調査定義のトップレベルキーは `job:` → `survey:`、全テーブルの主キー先頭列は
@@ -236,7 +224,7 @@ screening:
 `seed` と各バージョンが揃えば、**誰にどのコンセプトをどの順・どの選択肢順・どのプロンプトで
 提示したか**までが再現されます。**生成結果そのものの一致は保証しません**（エンドポイント側の
 非決定性は除去できないため）。だから生データに `answer_raw` / `attempt` / `flags` を必ず残します
-（`SPEC_PHASE1.md` §9.1）。
+（`SPEC.md` §9.1）。
 
 ---
 
@@ -253,15 +241,14 @@ concept_digitaltwin/
 │   ├── panel/              # M2/M4: 調査定義・検証・抽出・割り当て・スクリーニング
 │   ├── llm/                # 推論クライアント（Databricks / Fake）
 │   ├── run/                # M3/M6: セッション組み立て・実行・パース・品質フラグ
-│   └── aggregate/          # M5: 集計と §7.4 の出力一式
+│   └── aggregate/          # M5: 集計と §7.3 の出力一式
 ├── examples/survey_sample.yaml
 ├── notebooks/quickstart.ipynb            # 環境構築から結果までを1本で通す
 ├── notebooks/run_survey.ipynb            # Databricks ジョブの本体（アプリから起動）
 ├── app/                    # コンセプト調査 Web UI（Streamlit / Databricks Apps）
 ├── app.yaml                # Databricks Apps の起動設定
 ├── deploy/                 # デプロイ手順
-├── SPEC.md                 # 親仕様（全体構想・ガバナンス・フェーズ2以降）
-├── SPEC_PHASE1.md          # フェーズ1構築仕様（実装の根拠）
+├── SPEC.md                 # 構築仕様（実装の根拠・ガバナンス）
 ├── AGENTS.md               # プロジェクト固有ガイドライン（SSoT / エージェント共通）
 ├── CLAUDE.md / GEMINI.md   # 各エージェントの入口。AGENTS.md と .agents/rules/ を読ませる
 ├── CHANGELOG.md            # docs/history の目次

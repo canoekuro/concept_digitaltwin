@@ -3,7 +3,7 @@
 - 日時: 2026-08-13 08:25:12 UTC
 - 対象: `persona_sim/panel/{schema,loader,validate}.py` / `persona_sim/run/prompt.py` /
   `app/config/ui_config.yaml` / `examples/survey_sample.yaml` /
-  `SPEC_PHASE1.md` §3・§6.1・§6.2 / `docs/GUIDE_SURVEY_DEFINITION.md` §2 / `docs/SPEC_UI.md` §2
+  `SPEC.md` §3・§6.1・§6.2 / `docs/GUIDE_SURVEY_DEFINITION.md` §2 / `docs/SPEC_UI.md` §2
 - 起点: `docs/issues/202608131659.md`
 
 ## 1. 現状と問題
@@ -87,7 +87,7 @@ issue の内容は2文。
 
 ### ドキュメント
 
-- `SPEC_PHASE1.md`: §3 スキーマ例と設問フィールド表、§6.1 に「設問ごとに `[system]` を
+- `SPEC.md`: §3 スキーマ例と設問フィールド表、§6.1 に「設問ごとに `[system]` を
   使い分ける」節、§6.2 に prefix cache が損なわれない理由（並べ替えキーが
   `(stimulus_id, question_id, persona_uuid)` なので同じ設問＝同じ `[system]` が連続する）。
 - `docs/GUIDE_SURVEY_DEFINITION.md` §2 に書き方の節（実例は自動検証に載る完全な定義で書く）。

@@ -142,7 +142,7 @@ m == 1（`disjoint`、またはコンセプト1件）なら旧形式と新形式
 `run/session.py` / `run/prompt.py` / `aggregate/{crosstab,tables,aggregate,export}.py` /
 `uiconfig/build.py` / `metadata.py` / `app/views/results.py`
 
-仕様・例: `SPEC_PHASE1.md`（§2.5 / §3.1 / §5.1 / §6.2）/ `examples/survey_sample.yaml` /
+仕様・例: `SPEC.md`（§2.5 / §3.1 / §5.1 / §6.2）/ `examples/survey_sample.yaml` /
 `notebooks/quickstart.ipynb`
 
 テスト: **`tests/test_memory.py`（新規24件）** / `tests/conftest.py` /

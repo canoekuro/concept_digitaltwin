@@ -1,4 +1,4 @@
-# 調査定義のサンプル（SPEC_PHASE1.md §3）。
+# 調査定義のサンプル（SPEC.md §3）。
 #
 # 既定の提示設計は「反実仮想モナディック」（§5.3）。
 # 全ペルソナが全コンセプトを、互いに独立したセッションで評価する。
@@ -32,7 +32,7 @@ panel:
   filters:
     age_min: 20          # 酒類カテゴリなので未成年を含めない
 
-# 対象者条件の絞り込み（SPEC_PHASE1.md §4.2）。ask / assume / infer の3方式から選ぶ。
+# 対象者条件の絞り込み（SPEC.md §4.2）。ask / assume / infer の3方式から選ぶ。
 # ここでは config/ui_config.yaml の既定と同じ infer（別セッションの LLM が蓋然性で判定）。
 screening:
   model:                        # 省略したキーは main_survey.model を引き継ぐ
@@ -57,9 +57,7 @@ screening:
     persona_fields:
       - { field: "hobbies_and_interests", label: "趣味・関心事" }
 
-  mode: "infer"                 # ask（実際に聞く）| assume（前提として与える）| infer（蓋然性で選ぶ）
   oversample_factor: 4          # 候補の抽出倍率。通過者が構造的に足りないときは早期に停止する
-  # logic: は書かない。infer では判定の指示が上の prompt.rule に一本化されている
   batch_size: 20                # 1回の判定に渡すペルソナ数
   conditions:
     - "缶チューハイ・缶ハイボールを月1回以上飲む"
@@ -86,17 +84,15 @@ stimuli:
       【特徴】和素材のクラフトジンを使った、山椒が香るジンソーダ。アルコール7%。
       【価格】希望小売価格 260円（350ml）
 
-design:
-  sample_overlap: "same"       # disjoint | allow_overlap | same
-  presentation: "sequential"   # sequential | simultaneous
-  rotation: "none"             # none | random | balanced
-
+# 提示設計は反実仮想モナディック固定（§5）。全ペルソナが全コンセプトを定義順に
+# 1件ずつ、独立したセッションで評価する。設定では変えられない。
+#
 # 設問は「そのペルソナが何番目に見るコンセプトについて聞くか」を slot で指定し、
 # 1人が評価するコンセプトの数だけ展開する。設問IDは実行時にも一意なので、
 # remember から設問IDだけで曖昧さなく参照できる。
 #
 # measure はコンセプト横断で「同じ問い」として束ねるキー。これが無いと
-# コンセプト比較表（§7.2）が組めない——slot ごとに別IDになるため。
+# コンセプトを横断して比べられない——slot ごとに別IDになるため。
 #
 # remember はどの設問の回答を持ったままこの設問に入るか（§5.1）。
 #   - 同じ案の中では、購入意向の答えを踏まえて新規性を聞く
@@ -296,4 +292,4 @@ main_survey:
 
 output:
   segments: ["total", "sex", "age_band_10", "sex_x_age_band_10", "cell_id"]
-  formats: ["delta", "csv", "xlsx"]
+  formats: ["csv", "xlsx"]

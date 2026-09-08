@@ -43,11 +43,11 @@
    - `examples/survey_sample.yaml`、`notebooks/quickstart.ipynb`（実行される定義 dict、
      Databricks 接続例の markdown、コメントアウトされた参考 dict の計3箇所）。
 7. **仕様書**
-   - `SPEC_PHASE1.md`: バージョン 1.0 → 1.1。§3 の YAML 例、§6.3（リトライ項目 + 方針の段落を追加）、
+   - `SPEC.md`: バージョン 1.0 → 1.1。§3 の YAML 例、§6.3（リトライ項目 + 方針の段落を追加）、
      §9 の `run_metadata.json` 例、§9.1 再現性の範囲、§13 実装上の注意。
    - `SPEC.md`: §8.2 実行フローの「open設問: サンプリング生成（temperature 0.8）」、
      §17 リスク R4 の対応方針。
-   - `AGENTS.md`: 「実装上の不変条件」節（`SPEC_PHASE1.md` §13 の写し）に同じ1行を追加し同期。
+   - `AGENTS.md`: 「実装上の不変条件」節（`SPEC.md` §13 の写し）に同じ1行を追加し同期。
 8. **テスト**
    - `tests/test_infer.py`: 「未記入キーは本体から引き継ぐ」の検証役を `temperature` から
      `concurrency` へ差し替え。`_model()` ヘルパが既定で `concurrency=1` を渡しており、
@@ -73,7 +73,7 @@
 
 ## 副次的に解消した乖離
 
-`SPEC_PHASE1.md` §6.3 は「temperature を 0.0 → 0.3 に上げる」と書いていたが、実装
+`SPEC.md` §6.3 は「temperature を 0.0 → 0.3 に上げる」と書いていたが、実装
 （`session.py` の `RETRY_TEMPERATURE`）は **1.0** だった。仕様は段階的な昇温を記述し、
 実装は 2回目以降を固定値にしていた点も食い違っていた。今回の削除でこの乖離ごと消えた。
 

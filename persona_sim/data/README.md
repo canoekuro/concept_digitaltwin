@@ -1,7 +1,7 @@
 # 参照データ
 
 `persona_sim` に同梱する参照テーブル。**ペルソナ本体のデータは置かない**（`personas_base`
-は Delta テーブルとして持つ。`SPEC_PHASE1.md` §2.1）。ここに置くのは、調査設計のときに
+は Delta テーブルとして持つ。`SPEC.md` §2.1）。ここに置くのは、調査設計のときに
 参照する外部統計だけ。
 
 ## `census_population_by_sex_age5.csv`（国勢調査 人口構成比）

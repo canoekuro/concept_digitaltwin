@@ -9,7 +9,7 @@
    本番規模サンプルだけがスクリーニングなしの調査定義になっている。
 2. `main_survey.persona_card.persona_fields` に選べる定性（ナラティブ）フィールドの
    一覧が設定ファイル上に見当たらない。今後見直すときに `personas_base` の列一覧
-   （`SPEC_PHASE1.md` §2.1）まで遡らないと選択肢が分からない。
+   （`SPEC.md` §2.1）まで遡らないと選択肢が分からない。
 
 ## 対応方針
 
@@ -22,7 +22,7 @@
   題材（RTD アルコール飲料のコンセプト調査）に合わせ、`examples/survey_sample_smoke.yaml`
   で使われている条件文 `"缶チューハイ・缶ハイボールを月1回以上飲む"` を流用する。
 - 置き場所は `panel:` の直後・`stimuli:` の前（`survey_sample_smoke.yaml` と同じ並び、
-  `SPEC_PHASE1.md` のスキーマ順 `survey → panel → screening → stimuli → design →
+  `SPEC.md` のスキーマ順 `survey → panel → screening → stimuli → design →
   questions → main_survey → output` にも合う）。
 - 冒頭コメントに「`screening:` も `ui_config.yaml` 由来だが `conditions` だけこのサンプル
   固有」と追記する。
@@ -30,7 +30,7 @@
 ### 2. `app/config/ui_config.yaml` に定性フィールドの一覧をコメントで残す
 
 - `main_survey.persona_card.persona_fields` の直前に、`personas_base`
-  （`SPEC_PHASE1.md` §2.1）にあるナラティブ列を全て列挙するコメントを追加する。
+  （`SPEC.md` §2.1）にあるナラティブ列を全て列挙するコメントを追加する。
   既定で選択中の4項目にはその旨を注記する。
 - 設定の挙動は変えない（コメントのみ）。過去の履歴（#18 `config-restructure`）で
   読み手の無い `screener.available_persona_fields` を実フィールドとして削除した

@@ -1,6 +1,6 @@
 # `occupation` の分解規則
 
-`SPEC_PHASE1.md` §2.1 の `occupation_industry` / `occupation_scale` / `occupation_role` /
+`SPEC.md` §2.1 の `occupation_industry` / `occupation_scale` / `occupation_role` /
 `employment_status` を、Nemotron-Personas-Japan の `occupation` から導出するための規則。
 
 **推測ではなく実データから決めた。** 検証対象は

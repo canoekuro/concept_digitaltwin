@@ -1,4 +1,4 @@
-"""`mode: infer` の判定（`persona_sim.panel.infer`）。
+"""スクリーニングの判定（`persona_sim.panel.infer`）。
 
 Spark を使わない純関数を対象にする。判定に見せる情報の制御と、
 推定値を実測値と取り違えないための記録の形を重視する。
@@ -26,7 +26,6 @@ from persona_sim.panel.schema import (
     ModelConfig,
     PersonaCardConfig,
     PersonaField,
-    ScreenerLogic,
     ScreeningConfig,
     ScreeningPromptConfig,
 )
@@ -60,11 +59,7 @@ _PERSONAS = {
 
 
 def _screener(**overrides) -> ScreeningConfig:
-    base = dict(
-        conditions=("缶チューハイを月1回以上飲む",),
-        mode="infer",
-        logic=ScreenerLogic.ALL,
-    )
+    base = dict(conditions=("缶チューハイを月1回以上飲む",))
     base.update(overrides)
     return ScreeningConfig(**base)
 
@@ -180,10 +175,9 @@ def test_judge_messages_do_not_inject_a_logic_sentence():
     差し込んでいた。設定から触れない文が最も効く位置に入るため、`prompt` を
     除外型に書き換えても判定が変わらなかった（docs/issues/screeningの問題.md）。
     """
-    for logic in (ScreenerLogic.ALL, ScreenerLogic.ANY):
-        user = build_judge_messages([_PERSONAS["u1"]], _screener(logic=logic))[1].content
-        assert "すべての条件" not in user
-        assert "いずれかの条件" not in user
+    user = build_judge_messages([_PERSONAS["u1"]], _screener())[1].content
+    assert "すべての条件" not in user
+    assert "いずれかの条件" not in user
 
 
 def test_judge_messages_end_with_the_configured_rule():
@@ -531,7 +525,7 @@ def test_run_inference_counts_tokens_of_every_batch():
         "s1",
         list(_PERSONAS) * 3,
         _PERSONAS,
-        ScreeningConfig(conditions=screener.conditions, mode="infer", batch_size=2),
+        ScreeningConfig(conditions=screener.conditions, batch_size=2),
         client,
         _model(),
     )
@@ -547,11 +541,7 @@ def test_run_inference_splits_into_batches():
         "s1",
         list(_PERSONAS) * 3,
         _PERSONAS,
-        ScreeningConfig(
-            conditions=screener.conditions,
-            mode="infer",
-            batch_size=2,
-        ),
+        ScreeningConfig(conditions=screener.conditions, batch_size=2),
         client,
         _model(),
     )

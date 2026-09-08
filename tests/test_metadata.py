@@ -1,7 +1,7 @@
 """実行メタデータの人が読む側（`persona_sim.metadata`）。
 
 `prompt_sample.md` は、実行後に「結局どう聞いたのか」を確かめる唯一の読み物
-（`SPEC_PHASE1.md` §9）。Spark を起動せずに組み立てだけを見る。
+（`SPEC.md` §9）。Spark を起動せずに組み立てだけを見る。
 """
 
 from __future__ import annotations

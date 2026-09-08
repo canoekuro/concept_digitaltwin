@@ -15,7 +15,7 @@ import pytest
 from persona_sim.aggregate import segments as segment_axes
 from persona_sim.aggregate.aggregate import build_result
 from persona_sim.aggregate.crosstab import tabulated_measures
-from persona_sim.aggregate.export import UI_RAW_SHEET, UI_SUMMARY_SHEET, write_ui_workbook
+from persona_sim.aggregate.export import RAW_SHEET, SUMMARY_SHEET, write_workbook
 from persona_sim.aggregate.frame import answers_from_rows
 from persona_sim.aggregate.rawdata import labelled_csv_rows
 from persona_sim.aggregate.tables import concept_axis_table, stacked_crosstab_table
@@ -117,7 +117,7 @@ def test_the_page_shows_one_concept_table_per_tabulated_question(survey, result)
 
 
 def test_the_attribute_table_picker_offers_only_concept_by_question(result):
-    """コンセプト比較表とパネル構成表は選ばせない。"""
+    """積んだ表とパネル構成表は選ばせない。"""
     offered = [table.key for table in result.tables if table.key.startswith(CROSSTAB_PREFIX)]
 
     assert offered
@@ -138,19 +138,19 @@ def test_the_download_is_one_workbook_with_the_table_and_the_raw_data(
     table = stacked_crosstab_table(
         survey, result.crosstabs, key="crosstab", title="クロス集計表"
     )
-    path = write_ui_workbook(
+    path = write_workbook(
         tmp_path / "r.xlsx",
         survey,
-        table,
+        [table],
         notes=result.notes,
         raw_columns=raw_columns,
         raw_rows=raw_rows,
     )
 
     workbook = openpyxl.load_workbook(path)
-    assert workbook.sheetnames == [UI_SUMMARY_SHEET, UI_RAW_SHEET]
+    assert workbook.sheetnames == [SUMMARY_SHEET, "crosstab", RAW_SHEET]
 
-    body = list(workbook[UI_SUMMARY_SHEET].iter_rows(values_only=True))
+    body = list(workbook["crosstab"].iter_rows(values_only=True))
     header = next(row for row in body if row[0] == "設問")
     assert header[:6] == ("設問", "コンセプト", "軸", "セグメント", "n", "n(フラグ除外後)")
     # 2問 × 3コンセプト × セグメント（全体・男・女）ぶんの行がある。
@@ -159,7 +159,7 @@ def test_the_download_is_one_workbook_with_the_table_and_the_raw_data(
         "q_novelty",
     }
 
-    raw = list(workbook[UI_RAW_SHEET].iter_rows(values_only=True))
+    raw = list(workbook[RAW_SHEET].iter_rows(values_only=True))
     assert "stimulus_name" in raw[0]
     assert "answer_labels" in raw[0]
     assert raw[1][raw[0].index("stimulus_name")] == "コンセプトA"
@@ -173,11 +173,11 @@ def test_the_downloaded_workbook_carries_the_attribution_and_the_disclaimer(
     table = stacked_crosstab_table(
         survey, result.crosstabs, key="crosstab", title="クロス集計表"
     )
-    path = write_ui_workbook(tmp_path / "r.xlsx", survey, table, notes=result.notes)
+    path = write_workbook(tmp_path / "r.xlsx", survey, [table], notes=result.notes)
 
     workbook = openpyxl.load_workbook(path)
     body = "\n".join(
-        str(row[0]) for row in workbook[UI_SUMMARY_SHEET].iter_rows(values_only=True) if row[0]
+        str(row[0]) for row in workbook[SUMMARY_SHEET].iter_rows(values_only=True) if row[0]
     )
 
     assert "Nemotron-Personas-Japan" in body
@@ -201,10 +201,10 @@ def test_a_timezone_aware_datetime_breaks_the_download(tmp_path, survey):
     )
 
     with pytest.raises(TypeError, match="timezone"):
-        write_ui_workbook(
+        write_workbook(
             tmp_path / "r.xlsx",
             survey,
-            table,
+            [table],
             raw_columns=("persona_uuid", "ts"),
             raw_rows=[["u0", datetime(2026, 8, 5, 7, 21, 45, tzinfo=UTC)]],
         )
@@ -251,7 +251,7 @@ def test_the_raw_data_does_not_carry_a_timestamp_column(survey):
 
     上のとおり、tz 付き datetime が1列あるだけでダウンロードが失敗する。
     `responses.ts` はコネクタが tz 付きで返す唯一の列なので、ここを守れば
-    `write_ui_workbook()` に datetime は渡らない。
+    `write_workbook()` に datetime は渡らない。
     """
     columns, _ = labelled_csv_rows(
         survey, [{name: None for name in warehouse.RAW_RESPONSE_COLUMNS}]
@@ -265,7 +265,7 @@ def test_the_page_does_not_build_the_workbook_on_every_rerun():
     """xlsx の組み立ては `context.workbook_bytes()`（`@st.cache_data`）を通すこと。
 
     `st.download_button` は押される前からデータの実体を要求するので、ページが
-    `write_ui_workbook()` を直に呼ぶと、表を切り替えるたび・チェックを触るたびに
+    `write_workbook()` を直に呼ぶと、表を切り替えるたび・チェックを触るたびに
     回答数千行の Excel を作り直す。Streamlit を起動せずに守るため、ソースの形で固定する。
 
     キャッシュが返すのは**バイト列**であってパスではない。一時ディレクトリは
@@ -274,7 +274,7 @@ def test_the_page_does_not_build_the_workbook_on_every_rerun():
     page = _RESULTS_PAGE.read_text(encoding="utf-8")
     context_source = _CONTEXT_MODULE.read_text(encoding="utf-8")
 
-    assert "write_ui_workbook" not in page, "ページが xlsx を直接組み立てている"
+    assert "write_workbook" not in page, "ページが xlsx を直接組み立てている"
     assert "context.workbook_bytes(" in page
 
     assert "@st.cache_data" in context_source

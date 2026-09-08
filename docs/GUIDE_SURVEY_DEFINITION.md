@@ -3,14 +3,17 @@
 調査定義は **YAML 1ファイル**で、これがシステムへの唯一の入力です。パネル構築から
 集計まで、すべてこのファイルの内容だけで決まります。
 
-この文書は**書き方**だけを扱います。なぜその設計なのかは `SPEC_PHASE1.md` にあります
-（各節からリンクします）。フィールドの網羅的な一覧も `SPEC_PHASE1.md` §3 です。
+この文書は**書き方**だけを扱います。なぜその設計なのかは `SPEC.md` にあります
+（各節からリンクします）。フィールドの網羅的な一覧も `SPEC.md` §3 です。
 
-**書いたら必ず `persona-sim validate` を通してください。** 綴り違い・廃止フィールド・
-設計の矛盾は、実行前にここで止まります。移行先や直し方もメッセージに出ます。
+**書いたら必ず検証を通してください。** 綴り違い・未知のキー・設問の抜けは、実行前に
+ここで止まります。直し方もメッセージに出ます。
 
-```bash
-persona-sim validate path/to/survey.yaml
+```python
+from persona_sim.panel.loader import load_survey
+from persona_sim.panel.validate import validate_static
+
+report = validate_static(load_survey("path/to/survey.yaml"))
 ```
 
 ---
@@ -61,7 +64,7 @@ main_survey:
 ```
 
 `design` を省略すると **`sample_overlap: same` × `presentation: sequential`** になります
-（`SPEC_PHASE1.md` §5.3）。コンセプトが1件なら、これは「全員が1案を評価する」形です。
+（`SPEC.md` §5.3）。コンセプトが1件なら、これは「全員が1案を評価する」形です。
 
 ---
 
@@ -236,7 +239,7 @@ main_survey:
 ## 3. 記憶（`remember`）
 
 各設問に「この設問に答えるとき、どの設問の記憶を持っているか」を書けます
-（`SPEC_PHASE1.md` §5.1）。**書かなければ何も覚えません。**
+（`SPEC.md` §5.1）。**書かなければ何も覚えません。**
 
 | 書き方 | 意味 |
 |---|---|
@@ -279,7 +282,7 @@ main_survey:
 **コンセプトをまたぐ記憶は、比較を歪めます。** 案Aの評価が案Bの回答に混ざるので、
 案どうしを公平に比べたいなら入れないでください。既定（何も書かない）が
 **反実仮想モナディック**で、実査では不可能な「同じ人に、前の記憶なしで別の案を聞く」形です。
-順序効果が原理的に発生しないのが利点です（`SPEC_PHASE1.md` §5.3）。
+順序効果が原理的に発生しないのが利点です（`SPEC.md` §5.3）。
 
 ### 細かい規則
 
@@ -304,7 +307,7 @@ main_survey:
 
 ## 4. 理由を書かせる（`reasoning`）
 
-選択式の設問で、**理由を書いてから番号を選ばせる**設定です（`SPEC_PHASE1.md` §6.3）。
+選択式の設問で、**理由を書いてから番号を選ばせる**設定です（`SPEC.md` §6.3）。
 構造化出力のスキーマに `reasoning` を足し、番号より**前**に置くことで実現しています。
 生成は前から進むので、順序がそのまま「考えてから答える」順になります。
 
@@ -399,7 +402,7 @@ main_survey:
 
 ### 使うかどうかの判断
 
-**回答が収束してペルソナ間のばらつきが縮む可能性があります**（`SPEC_PHASE1.md` §13 が
+**回答が収束してペルソナ間のばらつきが縮む可能性があります**（`SPEC.md` §13 が
 思考モードを禁じているのと同じ理由）。`validate` も警告を出します。コンセプト調査の
 出力は個人の回答品質ではなく**分布**なので、次を必ず見比べてください。
 
@@ -416,70 +419,44 @@ main_survey:
 ## 5. 対象者条件（スクリーニング）
 
 `screening` は任意です。書かなければ割り付けどおりのパネルをそのまま使います。
-方式は3つあり、**費用と、得られるものが違います**（`SPEC_PHASE1.md` §4.2）。
 
-| | `ask` | `assume` | `infer` |
-|---|---|---|---|
-| やること | 実際に聞いて通過者を残す | 聞かずに前提として付与 | 別の LLM が蓋然性で選ぶ |
-| 書くもの | `questions` | `conditions` | `conditions` |
-| 費用 | `size × oversample_factor × 設問数` | **0** | `候補数 ÷ batch_size` 回 |
-| インシデンス | **実測できる** | 測れない（`null` を記録） | 推定値（別欄に記録） |
-
-**方式ごとに書けるものが違います。** `ask` に `conditions` を、`assume` / `infer` に
-`questions` を書くと止まります（選択肢を提示しないので `pass_if` に意味がないため）。
+**方式は1つです**（`SPEC.md` §4.2）。対象者条件を自然言語で書くと、判定用の LLM が
+候補をまとめて読み、条件に合致する蓋然性が高い人にだけ属性を与えます。費用は
+`候補数 ÷ batch_size` 回です。
 
 ```yaml
-# 実際に聞く
 screening:
-  mode: "ask"
-  oversample_factor: 4
-  questions:
-    - id: "sc1"
-      text: "缶チューハイなどをどのくらいの頻度で飲みますか。"
-      type: "single"
-      options: ["週2回以上", "週1回", "月2〜3回", "月1回", "それ以下・飲まない"]
-      pass_if: [1, 2, 3, 4]           # 通過とみなす選択肢番号
-      premise: "缶チューハイを月1回以上飲む"   # ペルソナカードに載せる前提文
-```
-
-```yaml
-# 聞かずに前提として与える（費用0）
-screening:
-  mode: "assume"
+  oversample_factor: 4            # 候補の抽出倍率
+  batch_size: 20                  # 1回の判定に渡すペルソナ数
   conditions:
     - "缶チューハイ・缶ハイボールを月1回以上飲む"
 ```
 
-どの方式でも、確定したペルソナのカード末尾に前提ブロックが付きます。**記憶を持たない設問
-では会話履歴で前提を引き継げない**ので、カードに載せることで必ず効かせています。
+**選択肢や `pass_if` は書けません。** 本人に選択肢を見せて答えさせないので、書いても
+使い道がありません。条件をどう結合するか（すべて満たすのか、いずれかで足りるのか）は
+`screening.prompt.rule` の文面に書きます。
+
+**通過率は推定値です。** 本人には聞いていないので実測はできません。
+`runs.screener_incidence_estimated` に別枠で記録し、判定結果には `inferred` フラグが
+立ちます。実査のインシデンスと同じものとして読まないでください。
+
+確定したペルソナのカード末尾には前提ブロックが付きます。**記憶を持たない設問では会話履歴で
+前提を引き継げない**ので、カードに載せることで必ず効かせています。
 
 ---
 
 ## 6. 提示設計
 
-コンセプトが2件以上あるときだけ意味を持ちます（`SPEC_PHASE1.md` §5）。
+**反実仮想モナディック固定です**（`SPEC.md` §5）。書く項目はありません。
 
-```yaml
-design:
-  sample_overlap: "same"        # disjoint | allow_overlap | same
-  presentation: "sequential"    # sequential | simultaneous
-  stimuli_per_persona: null     # allow_overlap のときだけ 2〜(コンセプト数-1)
-  rotation: "none"              # none | random | balanced
-```
+- 全ペルソナが**全コンセプトを定義順に1件ずつ**評価します
+- 同じ人に同じコンセプトが2回当たることはありません
+- 設問どうしは既定で独立（`remember` を書かないかぎり記憶を持たない）なので、
+  案を独立に評価させたうえで直接比べられます
+- 有効サンプル数は `panel.size` のままです
 
-**`sample_overlap`** は1人が何案を評価するかです。
-
-| 値 | 1人あたり | 有効サンプル数 |
-|---|---|---|
-| `disjoint` | 1件 | `panel.size ÷ 案数` |
-| `allow_overlap` | `stimuli_per_persona` 件 | `panel.size × m ÷ 案数` |
-| `same`（既定） | 全件 | `panel.size` のまま |
-
-**`rotation: balanced`（ラテン方格）は、コンセプトをまたぐ記憶があるときだけ意味を持ちます。**
-どの設問も記憶を持たないなら順序効果が発生しないので、`validate` が警告します。
-
-**`presentation: simultaneous`** は全案を1度に見せて比較させる形です。この場合 `slot` は
-書けません（提示順という概念がないため）。
+したがって**設問は案の数だけ `slot` 展開が要ります**（コンセプト3件なら slot 1〜3）。
+抜けると読み込みで止まります。
 
 ---
 
@@ -490,11 +467,10 @@ design:
 | 症状 | 原因 |
 |---|---|
 | `割り付けの合計 N が panel.size と一致しない` | `quotas.cells` の `n` の合計を `panel.size` に合わせる |
-| `slot [2] の設問が無い` | 1人が2案を評価するのに slot 2 の設問を書いていない |
-| `slot は 1〜N。範囲外の slot がある` | `sample_overlap` を変えたのに設問の展開を直していない |
+| `slot [2] の設問が無い` | コンセプト2件目について聞く設問を書いていない |
+| `slot は 1〜N。範囲外の slot がある` | コンセプトを減らしたのに設問の展開を直していない |
 | `設問IDが重複している` | 展開した設問に同じIDを付けている |
 | `measure の設問で top_box が違う` | 同じ問いなのに T2B の定義がコンセプトごとにずれている |
-| `design.memory は廃止した` | 記憶は `questions[].remember` へ移行（案内が出ます） |
 | `順序尺度の選択肢はシャッフルしない` | `scale` / `top_box` を持つ設問の `randomize_options` を外す |
 | `未知のキー` | 綴り違い。黙って捨てないので必ず止まります |
 
@@ -502,15 +478,18 @@ design:
 
 ## 8. 実行
 
-```bash
-persona-sim validate survey.yaml     # 検証と見積もり（必ず先に）
-persona-sim panel    survey.yaml     # パネル構築
-persona-sim screen   survey.yaml     # スクリーニング（ask / infer のときだけ）
-persona-sim run      survey.yaml     # 回答生成
-persona-sim aggregate survey.yaml    # 集計と出力
+`notebooks/run_survey.ipynb` を上から実行します（Databricks ジョブの本体でもあります）。
+
+```python
+survey = load_survey("survey.yaml")
+validate_static(survey)                    # 検証と見積もり（必ず先に）
+build_panel(spark, survey, storage)        # パネル構築
+screen_survey(spark, survey, storage)      # スクリーニング（screening: を書いたときだけ）
+run_survey(spark, survey, storage)         # 回答生成
+aggregate_survey(spark, survey, storage, output_dir())  # 集計と出力
 ```
 
-`validate` は実行前に見積もりを出します。**費用に直結するので必ず確認してください。**
+`validate_static()` は実行前に見積もりを出します。**費用に直結するので必ず確認してください。**
 
 ```
 パネル人数        : 600
@@ -527,10 +506,10 @@ persona-sim aggregate survey.yaml    # 集計と出力
 
 ## 参照
 
-- `SPEC_PHASE1.md` §3 — 全フィールドの一覧
-- `SPEC_PHASE1.md` §4.2 — スクリーニング3方式の選び方
-- `SPEC_PHASE1.md` §5 — 提示設計と設問ごとの記憶
-- `SPEC_PHASE1.md` §11 — 停止するエラーの一覧
+- `SPEC.md` §3 — 全フィールドの一覧
+- `SPEC.md` §4.2 — スクリーニング3方式の選び方
+- `SPEC.md` §5 — 提示設計と設問ごとの記憶
+- `SPEC.md` §11 — 停止するエラーの一覧
 - `examples/survey_sample.yaml` — 全フィールドを使った注釈つきの実例
 - `examples/survey_sample_smoke.yaml` — 最小構成
 - `AGENTS.md` — 破ってはいけない不変条件

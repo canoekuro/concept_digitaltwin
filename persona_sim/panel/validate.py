@@ -1,4 +1,4 @@
-"""調査定義の検証（`SPEC_PHASE1.md` §10.1, §11）。
+"""調査定義の検証（`SPEC.md` §10.1, §11）。
 
 2段構えになっている。
 
@@ -22,18 +22,14 @@ from persona_sim.panel.schema import (
     REASONING_QUESTION_TYPES,
     Endpoint,
     ImageMode,
-    Presentation,
     Question,
     QuestionType,
     QuotaMode,
     RememberMode,
-    Rotation,
-    SampleOverlap,
-    ScreenerMode,
     StructuredOutput,
     SurveyDefinition,
 )
-from persona_sim.run.memory import ask_order, retains_memory, session_groups
+from persona_sim.run.memory import ask_order, session_groups
 
 if TYPE_CHECKING:  # pragma: no cover
     from pyspark.sql import DataFrame, SparkSession
@@ -71,13 +67,8 @@ class Estimate:
     measures: int
     sessions: int
     effective_n_per_stimulus: int
-    #: 選んだ方式での呼び出し回数（`assume` は0）。
+    #: スクリーニングの判定呼び出し回数。`screening:` が無ければ0。
     screener_sessions: int = 0
-    #: `ask` にしたときのセッション数。方式を選ぶための比較材料。
-    screener_sessions_if_ask: int = 0
-    #: `infer` にしたときの判定呼び出し回数。同上。
-    screener_sessions_if_infer: int = 0
-    screener_method: str | None = None
 
     @property
     def answers(self) -> int:
@@ -95,18 +86,8 @@ class Estimate:
             f"1人あたり評価数   : {self.stimuli_per_persona}",
             f"設問数            : {self.questions}（別々の問い {self.measures} 種）",
         ]
-        if self.screener_method is not None:
-            # 選ばなかった側も見せる。費用とのバーターで方式を選ぶ判断材料になる。
-            others = [
-                f"{name} なら {count:,}"
-                for name, count in (
-                    ("ask", self.screener_sessions_if_ask),
-                    ("infer", self.screener_sessions_if_infer),
-                )
-                if name != self.screener_method
-            ]
-            comparison = f"（{self.screener_method}）／ " + " ・ ".join(others)
-            lines.append(f"スクリーニング    : {self.screener_sessions:,} 回{comparison}")
+        if self.screener_sessions:
+            lines.append(f"スクリーニング    : {self.screener_sessions:,} 回")
         lines.extend(
             [
                 f"本調査            : {self.sessions:,} セッション",
@@ -141,7 +122,6 @@ class ValidationReport:
 def validate_static(survey: SurveyDefinition) -> ValidationReport:
     """Spark を使わずに検証できるものすべて。"""
     report = ValidationReport()
-    _check_design(survey, report)
     _check_invariants(survey, report)
     _check_stimuli(survey, report)
     _check_questions(survey, report)
@@ -158,18 +138,11 @@ def validate_static(survey: SurveyDefinition) -> ValidationReport:
 
 def estimate(survey: SurveyDefinition) -> Estimate:
     """セッション数と有効サンプル数の見積もり（§10.1）。"""
-    from persona_sim.panel.screening import infer_call_count, screener_session_count
+    from persona_sim.panel.screening import infer_call_count
 
     k = survey.stimuli_count
-    m = survey.design.stimuli_count_per_persona(k)
+    m = survey.stimuli_per_persona
     size = survey.panel.size
-    screener = survey.screening
-
-    if_ask = screener_session_count(survey)
-    if_infer = infer_call_count(survey)
-    chosen = 0
-    if screener is not None:
-        chosen = if_ask if screener.asks else if_infer if screener.infers else 0
     return Estimate(
         panel_size=size,
         stimuli_total=k,
@@ -181,68 +154,13 @@ def estimate(survey: SurveyDefinition) -> Estimate:
         # 記憶を持たせた調査でコスト見積が実際の呼び出し回数とずれる。
         sessions=size * len(session_groups(survey)),
         effective_n_per_stimulus=size * m // k,
-        screener_sessions=chosen,
-        screener_sessions_if_ask=if_ask,
-        screener_sessions_if_infer=if_infer,
-        screener_method=str(screener.mode) if screener else None,
+        screener_sessions=infer_call_count(survey),
     )
 
 
 # --------------------------------------------------------------------------- #
 # 静的検証
 # --------------------------------------------------------------------------- #
-
-
-def _check_design(survey: SurveyDefinition, report: ValidationReport) -> None:
-    """提示設計2軸の整合（E6, §5）。記憶は設問側なのでここには無い。"""
-    design = survey.design
-    k = survey.stimuli_count
-    m = design.stimuli_per_persona
-
-    if design.presentation is Presentation.SIMULTANEOUS and design.sample_overlap is not SampleOverlap.SAME:
-        report.error(
-            "E6",
-            "presentation: simultaneous は sample_overlap: same を要求する"
-            "（全コンセプトを同時に見せて比較させるため）",
-        )
-
-    match design.sample_overlap:
-        case SampleOverlap.DISJOINT:
-            if m is not None and m != 1:
-                report.error(
-                    "E6",
-                    f"sample_overlap: disjoint では 1人1コンセプトなので "
-                    f"stimuli_per_persona に {m} は指定できない（省略するか 1）",
-                )
-        case SampleOverlap.SAME:
-            if m is not None:
-                report.error(
-                    "E6",
-                    f"sample_overlap: same では全 {k} 件を評価するので "
-                    f"stimuli_per_persona（{m}）は指定できない",
-                )
-        case SampleOverlap.ALLOW_OVERLAP:
-            if m is None:
-                report.error(
-                    "E6",
-                    f"sample_overlap: allow_overlap では stimuli_per_persona が必須"
-                    f"（2〜{k - 1} の範囲）",
-                )
-            elif not 2 <= m <= k - 1:
-                report.error(
-                    "E6",
-                    f"sample_overlap: allow_overlap の stimuli_per_persona は 2〜{k - 1} の範囲"
-                    f"（指定値: {m}）。1 なら disjoint、{k} なら same を使う",
-                )
-
-    # 記憶は設問の性質なので、設問ごとの指定を見て判定する。
-    if design.rotation is Rotation.BALANCED and not retains_memory(survey):
-        report.warn(
-            "W_ROTATION",
-            "どの設問も記憶を持たない（questions[].remember の指定が無い）ため"
-            "会話履歴が残らず順序効果が発生しないので、"
-            "rotation: balanced（ラテン方格）は意味を持たない",
-        )
 
 
 def _check_invariants(survey: SurveyDefinition, report: ValidationReport) -> None:
@@ -298,7 +216,7 @@ def _check_reasoning(survey: SurveyDefinition, report: ValidationReport) -> None
         "W_REASONING",
         f"reasoning: true の設問が {len(reasoning_questions)} 問ある。"
         "理由を書かせると回答が収束してペルソナ間のばらつきが縮みうる"
-        "（SPEC_PHASE1.md §13）。水準だけでなく、選択肢の分布・セグメント間の差が"
+        "（SPEC.md §13）。水準だけでなく、選択肢の分布・セグメント間の差が"
         "残っているかを確かめること。出力トークンと所要時間も増える",
     )
 
@@ -442,7 +360,6 @@ def _check_questions(survey: SurveyDefinition, report: ValidationReport) -> None
                     f"{path}: top_box {out_of_range} が選択肢の範囲（1〜{len(question.options)}）外",
                 )
 
-    _check_slots(survey, report)
     _check_measures(survey, report)
     _check_remember(survey, report)
     _check_system_prompts(survey, report)
@@ -467,34 +384,10 @@ def _check_system_prompts(survey: SurveyDefinition, report: ValidationReport) ->
         )
 
 
-def _check_slots(survey: SurveyDefinition, report: ValidationReport) -> None:
-    """`slot` が設計と噛み合っているか（E6, §3.1）。
-
-    **見るのは同時提示のときだけ。** `1..m` の被覆と範囲は
-    `panel/loader.py::_reject_unusable_questions()` が読み込みの時点で止めるので、
-    ここには不備のある調査定義が届かない（`survey_from_dict()` が
-    `SurveyDefinition` を組み立てる唯一の場所）。届かない検査をここに置くと、
-    一度も発火しない検査を持ち続けることになる。
-
-    同時提示だけ残るのは、ローダーがこの場合 slot の判定そのものを飛ばすため
-    （全案を1度に見せるので被覆の概念が無い）。書かれた `slot` は無視されるだけで
-    結果は変わらないので、停止ではなく報告でよい。
-    """
-    if survey.design.presentation is not Presentation.SIMULTANEOUS:
-        return
-    written = [q.id for q in survey.questions if q.slot != 1]
-    if written:
-        report.error(
-            "E6",
-            f"presentation: simultaneous では slot を書けない（全案を1度に見せるため）。"
-            f"該当: {', '.join(written)}",
-        )
-
-
 def _check_measures(survey: SurveyDefinition, report: ValidationReport) -> None:
     """同じ `measure` の設問が、同じ表として集計できる形か（E6, §8）。
 
-    コンセプト比較表は measure ごとに1表で、**表頭も指標も代表1つの設問から作る**。
+    集計表は measure ごとに1表で、**表頭も指標も代表1つの設問から作る**。
     食い違ったまま束ねると、別の問いの数字が同じ列に並ぶ。
 
     `top_box` を見るのは、T2B が代表の定義で全コンセプトぶん計算されるため。
@@ -597,54 +490,16 @@ def _check_unimplemented(survey: SurveyDefinition, report: ValidationReport) -> 
 
 def _check_screener(survey: SurveyDefinition, report: ValidationReport) -> None:
     """スクリーナー定義の検証（§4.2）。"""
-    from persona_sim.panel.screening import unsupported_question_types
-
     screener = survey.screening
     if screener is None:
         return
 
-    if screener.asks:
-        _check_screener_questions(screener, unsupported_question_types(screener), report)
-    else:
-        _check_screener_conditions(screener, report)
+    _check_screener_conditions(screener, report)
 
     if screener.oversample_factor < 1:
-        report.error("SURVEY", "panel.screener.oversample_factor は1以上")
+        report.error("SURVEY", "screening.oversample_factor は1以上")
 
-    raw_keys = _raw_screener_keys(survey)
-    if screener.mode is ScreenerMode.ASSUME and "oversample_factor" in raw_keys:
-        report.warn(
-            "W_SCREENER_OVERSAMPLE",
-            "screener.mode: assume では oversample_factor は使われない"
-            "（聞かないのでオーバーサンプルする必要がない）",
-        )
-
-    _check_infer(survey, screener, raw_keys, report)
-
-
-def _check_screener_questions(screener, unsupported, report: ValidationReport) -> None:
-    """`mode: ask` のスクリーナー設問。実際に選択肢を見せて答えさせる（§4.2）。"""
-    _check_unique_ids([q.id for q in screener.questions], "panel.screener.questions", report)
-
-    if unsupported:
-        report.error(
-            "SURVEY",
-            f"panel.screener.questions[{', '.join(unsupported)}]: 通過判定に使えるのは "
-            "single / multi のみ。自由回答や数値では機械的に判定できない",
-        )
-
-    for question in screener.questions:
-        path = f"panel.screener.questions[{question.id}]"
-        if len(question.options) < 2:
-            report.error("SURVEY", f"{path}: 選択肢が2つ以上必要")
-        if not question.pass_if:
-            report.error("SURVEY", f"{path}: pass_if が空。通過条件が無いと全員が非通過になる")
-        out_of_range = [i for i in question.pass_if if not 1 <= i <= len(question.options)]
-        if out_of_range:
-            report.error(
-                "SURVEY",
-                f"{path}: pass_if {out_of_range} が選択肢の範囲（1〜{len(question.options)}）外",
-            )
+    _check_infer(survey, screener, report)
 
 
 def _check_screener_conditions(screener, report: ValidationReport) -> None:
@@ -652,7 +507,7 @@ def _check_screener_conditions(screener, report: ValidationReport) -> None:
     if not screener.conditions:
         report.error(
             "SURVEY",
-            f"panel.screener.conditions が空。screener.mode が {screener.mode} なので、"
+            "screening.conditions が空。"
             "対象者条件が無いと誰にも何も付与できない",
         )
     for index, condition in enumerate(screener.conditions):
@@ -660,19 +515,8 @@ def _check_screener_conditions(screener, report: ValidationReport) -> None:
             report.error("SURVEY", f"panel.screener.conditions[{index}] が空文字")
 
 
-def _check_infer(
-    survey: SurveyDefinition, screener, raw_keys: set[str], report: ValidationReport
-) -> None:
-    """`mode: infer` の判定設定（§4.2）。"""
-
-    if not screener.infers:
-        if "infer" in raw_keys:
-            report.warn(
-                "W_SCREENER_INFER_UNUSED",
-                f"screener.mode が {screener.mode} なので infer の設定は使われない",
-            )
-        return
-
+def _check_infer(survey: SurveyDefinition, screener, report: ValidationReport) -> None:
+    """判定設定（§4.2）。"""
     card = screener.persona_card
     if screener.batch_size < 1:
         report.error("SURVEY", "screening.batch_size は1以上")
@@ -710,12 +554,6 @@ def _check_persona_card(card, path: str, report: ValidationReport) -> None:
             )
 
 
-def _raw_screener_keys(survey: SurveyDefinition) -> set[str]:
-    """調査定義に実際に書かれていたキー。既定値と区別するために生の内容を見る。"""
-    screening = survey.raw.get("screening") if isinstance(survey.raw, dict) else None
-    return set(screening) if isinstance(screening, dict) else set()
-
-
 def _check_prompt(survey: SurveyDefinition, report: ValidationReport) -> None:
     """ペルソナカードに載せる列が `personas_base` に存在すること（§6.1）。"""
     _check_persona_card(survey.persona_card, "main_survey.persona_card", report)
@@ -727,7 +565,7 @@ def _check_output(survey: SurveyDefinition, report: ValidationReport) -> None:
     軸が黙って無視されると、集計表からその軸が消えたことに実行後まで気づけない。
     """
     from persona_sim.aggregate import segments as segment_axes
-    from persona_sim.aggregate.export import FORMAT_CSV, FORMAT_DELTA, FORMAT_XLSX
+    from persona_sim.aggregate.export import FORMAT_CSV, FORMAT_XLSX
 
     for segment in survey.output.segments:
         unknown = segment_axes.unknown_axes(segment)
@@ -740,7 +578,7 @@ def _check_output(survey: SurveyDefinition, report: ValidationReport) -> None:
                 f"（例: sex{segment_axes.COMPOSITE_SEPARATOR}age_band_10）",
             )
 
-    known_formats = (FORMAT_DELTA, FORMAT_CSV, FORMAT_XLSX)
+    known_formats = (FORMAT_CSV, FORMAT_XLSX)
     for output_format in survey.output.formats:
         if output_format not in known_formats:
             report.error(

@@ -1,4 +1,4 @@
-"""回答生成の実行（`SPEC_PHASE1.md` §6）。
+"""回答生成の実行（`SPEC.md` §6）。
 
 `panels` と `personas_base` を読み、セッションを組み立てて実行し、`responses` に
 冪等に書き出す。中断しても同じコマンドで続きから再開できる（§6.4）。
@@ -261,7 +261,7 @@ def _load_panel(spark: SparkSession, survey: SurveyDefinition, storage: StorageC
     panels_locator = locator(PANELS, storage)
     if not delta.table_exists(spark, panels_locator):
         raise PersonaSimError(
-            f"{panels_locator.describe()} が無い。先に `persona-sim panel` を実行すること"
+            f"{panels_locator.describe()} が無い。先に `panel.build.build_panel()` を実行すること"
         )
 
     # 本調査に進むのは main だけ。reserve / screened_out / candidate は対象外。
@@ -275,11 +275,10 @@ def _load_panel(spark: SparkSession, survey: SurveyDefinition, storage: StorageC
         .collect()
     )
     if not rows:
-        screener = survey.screening
         hint = (
-            "先に `persona-sim screen` を実行すること（候補は抽出済みだが未判定）"
-            if screener is not None and screener.calls_llm
-            else "先に `persona-sim panel` を実行すること"
+            "先に `panel.screening.screen_survey()` を実行すること（候補は抽出済みだが未判定）"
+            if survey.screening is not None
+            else "先に `panel.build.build_panel()` を実行すること"
         )
         raise PersonaSimError(f"survey_id={survey.survey_id} に role=main のパネルが1件も無い。{hint}")
     return [

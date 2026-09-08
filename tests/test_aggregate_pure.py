@@ -113,8 +113,9 @@ def test_build_result_produces_every_table(survey):
         ("c3", "q_intent"),
     }
     keys = [table.key for table in result.tables]
-    assert "concept_summary" in keys
-    assert "concept_summary_by_segment" in keys
+    # measure ごとに1表 ＋ 全設問を積んだ表 ＋ パネル構成表。
+    assert "crosstab_q_intent" in keys
+    assert "crosstab_all" in keys
     assert "panel_composition" in keys
 
 
@@ -124,7 +125,7 @@ def test_build_result_segments_always_include_total(survey):
     data["output"]["segments"] = ["sex"]
     without_total = survey_from_dict(data)
     result = build_result(without_total, answers_from_rows([_row()], without_total), [])
-    axes = {row.segment for row in result.by_segment}
+    axes = {row.segment for table in result.crosstabs for row in table.rows}
     assert "total" in axes
 
 

@@ -29,13 +29,8 @@ _BASE: dict[str, Any] = {
         {"id": "c2", "name": "コンセプトB", "text": "内容B"},
         {"id": "c3", "name": "コンセプトC", "text": "内容C"},
     ],
-    "design": {
-        "sample_overlap": "same",
-        "presentation": "sequential",
-        "rotation": "none",
-    },
     "main_survey": {"model": {"endpoint": "fake", "deployment": "test-deployment"}},
-    "output": {"segments": ["total"], "formats": ["delta"]},
+    "output": {"segments": ["total"], "formats": ["csv"]},
 }
 
 
@@ -99,10 +94,12 @@ def with_remember(data: dict[str, Any], shape: str) -> dict[str, Any]:
 def base_survey_dict(slots: int = 3) -> dict[str, Any]:
     """検証を通過する最小の調査定義（毎回新しいコピーを返す）。
 
-    `slots` は1ペルソナが評価するコンセプト数。`design.sample_overlap` を変える
-    テストは、設問の展開もそれに合わせること（`slot` の抜けと範囲外は E6）。
+    `slots` はコンセプト数。提示設計は反実仮想モナディック固定で、全ペルソナが
+    全コンセプトを評価するため、**コンセプト数と slot の数は必ず一致する**
+    （`slot` の抜けと範囲外は読み込みの時点で止まる）。だから両方をここで揃える。
     """
     data = copy.deepcopy(_BASE)
+    data["stimuli"] = copy.deepcopy(_BASE["stimuli"][:slots])
     data["questions"] = questions_for(slots)
     return data
 

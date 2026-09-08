@@ -1,4 +1,4 @@
-"""実行メタデータ（`SPEC_PHASE1.md` §9）。
+"""実行メタデータ（`SPEC.md` §9）。
 
 利用側が実査と突き合わせるために必要な情報を、`runs` テーブルと
 `outputs/{survey_id}/run_metadata.json` の両方に残す。
@@ -90,15 +90,16 @@ def build_metadata(
         },
         "panel": _panel_summary(spark, survey, storage),
         "design": {
-            "sample_overlap": str(survey.design.sample_overlap),
-            "presentation": str(survey.design.presentation),
+            # 提示設計は反実仮想モナディック固定（§5）。設定では変えられないが、
+            # 記録から「どう見せたのか」が読み取れないと再現できないので残す。
+            "presentation": "counterfactual_monadic",
+            "stimuli_per_persona": survey.stimuli_per_persona,
             # 記憶は設問の性質なので、設問ごとに残す。何を持たせて聞いたのかが
             # 分からないと、モデルへの入力を再現できない（§9.1）。
             "questions_memory": {
                 question_id: remember.describe()
                 for question_id, remember in resolve_remember(survey).items()
             },
-            "rotation": str(survey.design.rotation),
             "image_mode": sorted({str(s.image_mode) for s in survey.stimuli}),
         },
         "execution": {
@@ -313,11 +314,10 @@ def _panel_summary(
     from pyspark.sql import functions as F
 
     from persona_sim.panel.sampling import ROLE_CANDIDATE, ROLE_MAIN
-    from persona_sim.panel.screening import incidence_from_panels
+    from persona_sim.panel.screening import SCREENER_METHOD, incidence_from_panels
 
     requested = allocate_cell_sizes(survey)
     achieved: dict[str, int] = {}
-    incidence: dict[str, float] | None = None
     incidence_estimated: dict[str, float] | None = None
     oversample_actual: float | None = None
 
@@ -335,15 +335,9 @@ def _panel_summary(
             if row["role"] == ROLE_MAIN:
                 achieved[row["cell_id"]] = achieved.get(row["cell_id"], 0) + 1
 
-        screener = survey.screening
-        if screener is not None and screener.calls_llm:
-            rates = incidence_from_panels(rows) or None
-            if screener.asks:
-                # 本人に聞いたので実測値（§4.2）。
-                incidence = rates
-            else:
-                # infer は聞いていない。同じ欄に入れると実測値と取り違えられる。
-                incidence_estimated = rates
+        if survey.screening is not None:
+            # **本人には聞いていない。** 実測値の欄には入れない（§4.2）。
+            incidence_estimated = incidence_from_panels(rows) or None
             judged = sum(1 for row in rows if row["role"] != ROLE_CANDIDATE)
             if survey.panel.size:
                 oversample_actual = round(judged / survey.panel.size, 3)
@@ -353,11 +347,9 @@ def _panel_summary(
         "size": survey.panel.size,
         "requested": requested,
         "achieved": achieved,
-        "screener_method": str(survey.screening.mode) if survey.screening else None,
-        # assume / infer では聞いていないので測れていない。1.0 と書くと「全員該当」と
-        # 誤読される（§9）。実測できるのは ask だけ。
-        "screener_incidence": incidence,
-        # infer の通過率。聞いた結果ではなく判定の結果なので、実測値とは別枠にする。
+        "screener_method": SCREENER_METHOD if survey.screening else None,
+        # **通過率は推定値。** 本人には聞いていないので実測はできない。1.0 と書くと
+        # 「全員該当」と誤読され、実測値の欄に入れると測ったものと取り違えられる（§9）。
         "screener_incidence_estimated": incidence_estimated,
         "oversample_actual": oversample_actual,
         # 誰をどう判定したかまで残さないと入力を再現できない（§9.1）。
@@ -382,11 +374,11 @@ def _persona_card_summary(card) -> dict[str, Any]:
 
 
 def _infer_summary(survey: SurveyDefinition) -> dict[str, Any] | None:
-    """`infer` の判定条件（§9.1）。他の方式では None。"""
+    """判定条件（§9.1）。スクリーニングが無ければ None。"""
     from persona_sim.panel.infer import judge_model
 
     screening = survey.screening
-    if screening is None or not screening.infers:
+    if screening is None:
         return None
 
     model = judge_model(survey.model, screening)

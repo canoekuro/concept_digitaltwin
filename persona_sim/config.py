@@ -64,5 +64,5 @@ def spark_master() -> str:
 
 
 def output_dir(override: str | None = None) -> str:
-    """ファイル成果物（`run_metadata.json` など）の出力先（§7.4）。"""
+    """ファイル成果物（`run_metadata.json` など）の出力先（§7.3）。"""
     return override or os.environ.get(ENV_OUTPUT_DIR) or "outputs"

@@ -32,7 +32,7 @@ Web UI マージ後の確認を経て）。
 - `persona_sim/metadata.py`: `prompt_template_version` / `prompt_sample.template_version` /
   `prompt_sample.md` の該当行を削除。
 - `config/ui_config.yaml`: `prompt.template_version` と、警告回避のための付随コメントを削除。
-- `SPEC_PHASE1.md`: §3・§6.1（YAML例2箇所と説明文）・§9 の `run_metadata.json` 例を更新。
+- `SPEC.md`: §3・§6.1（YAML例2箇所と説明文）・§9 の `run_metadata.json` 例を更新。
 - `notebooks/quickstart.ipynb`: `template_version` を使うセル3箇所を修正。
 - `tests/test_survey_loader.py` / `tests/test_validate.py` / `tests/test_run_spark.py`:
   `template_version` を前提にしたテストを削除・置き換え、廃止フィールドの回帰テストを追加。

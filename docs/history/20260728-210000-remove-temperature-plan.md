@@ -18,7 +18,7 @@
 - 既存の調査定義 YAML に `temperature:` があれば**理由つきのエラーで停止**する。
   黙って無視すると「指定したつもり」がそのまま `survey_definition` に記録されるため。
   既存の `REMOVED_DESIGN_FIELDS`（`design.type` の廃止）と同じ機構を再利用する。
-- 仕様書は `SPEC_PHASE1.md`（実装の直接の根拠）と `SPEC.md`(親仕様) の**両方**を改訂する。
+- 仕様書は `SPEC.md`（実装の直接の根拠）と `SPEC.md`(親仕様) の**両方**を改訂する。
 - `run_metadata.json` の `model` ブロックからは**キーごと削除**する（`null` で残さない）。
   送っていないパラメータを記録しない。
 
@@ -43,10 +43,10 @@
 6. **調査定義サンプル・ノートブック**
    - `examples/survey_sample.yaml`、`notebooks/quickstart.ipynb`（3箇所）。
 7. **仕様書**
-   - `SPEC_PHASE1.md`: バージョン 1.0 → 1.1。§3 の YAML 例、§6.3 リトライ、§9 の
+   - `SPEC.md`: バージョン 1.0 → 1.1。§3 の YAML 例、§6.3 リトライ、§9 の
      `run_metadata.json` 例、§9.1 再現性、§13 実装上の注意。
    - `SPEC.md`: §8.2 実行フロー、§17 リスク R4。
-   - `AGENTS.md`: 「実装上の不変条件」節（`SPEC_PHASE1.md` §13 の写し）に同じ1行を追加して同期を保つ。
+   - `AGENTS.md`: 「実装上の不変条件」節（`SPEC.md` §13 の写し）に同じ1行を追加して同期を保つ。
    - `docs/issues/` と `docs/history/` の過去記録は**書き換えない**（当時の観測の保存であるため）。
 8. **テスト**
    - `tests/test_infer.py`: 「未記入キーは本体から引き継ぐ」の検証役を `temperature` から `concurrency` へ差し替え。

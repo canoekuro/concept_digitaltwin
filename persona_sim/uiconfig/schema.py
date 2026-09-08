@@ -4,13 +4,13 @@
 
 | 層 | 何が入るか | どこから来るか |
 |---|---|---|
-| `UIConfig` | 調査をまたいで変わらないもの（本調査とスクリーニングのモデル・プロンプト・ペルソナカード、既定設問、割り付けパターン、見積もり実績値） | `config/ui_config.yaml` |
+| `UIConfig` | 調査をまたいで変わらないもの（本調査とスクリーニングのモデル・プロンプト・ペルソナカード、既定設問、割り付けパターン、見積もり実績値） | `app/config/ui_config.yaml` |
 | `SurveyForm` | 1調査ごとに変わるもの（調査名・N数・年齢範囲・対象者条件・コンセプト・設問） | 画面入力 |
 
 `UIConfig` 自身も**最上位で2群に分かれる**。`survey_defaults` はそのまま調査定義に
 なるもの、`ui` は画面を描くためだけのもの（`UIConfig` の説明を参照）。
 
-2つを `persona_sim.uiconfig.build.build_survey()` が合成して調査定義（`SPEC_PHASE1.md` §3）を作る。
+2つを `persona_sim.uiconfig.build.build_survey()` が合成して調査定義（`SPEC.md` §3）を作る。
 分けているのは、画面に出す入力欄と、運用で固定しておきたい値の寿命が違うため。
 毎回入力させると事故るし、設定ファイルに埋めると調査ごとに変えられない。
 
@@ -73,7 +73,7 @@ class Pricing:
 
     単価はモデル改定で、為替は日々で動く。別々に直せるよう分けて持つ。
     ここで出すのは**画面に出す概算**であって実請求ではない。実行メタデータの
-    `estimated_cost` は `SPEC_PHASE1.md` §9 のとおり `null` のままにする。
+    `estimated_cost` は `SPEC.md` §9 のとおり `null` のままにする。
     """
 
     input_usd_per_million: float
@@ -117,16 +117,14 @@ class AllocationPattern:
 class ScreeningDefaults:
     """スクリーニングの既定（`survey_defaults.screening`、§4.2）。
 
-    UI は自然言語の条件文を1つ受け取るだけなので、方式・オーバーサンプル倍率・
-    判定設定はここで固定する。
+    UI は自然言語の条件文を1つ受け取るだけなので、オーバーサンプル倍率と判定設定は
+    ここで固定する。
 
     `model` / `prompt` / `persona_card` は解釈せずそのまま調査定義へ渡す
     （`UIConfig` の説明を参照）。
     """
 
-    mode: str = "infer"
     oversample_factor: int = 4
-    logic: str = "all"
     batch_size: int | None = None
     model: Mapping[str, Any] = field(default_factory=dict)
     prompt: Mapping[str, Any] = field(default_factory=dict)
@@ -147,7 +145,7 @@ class MainSurveyDefaults:
 
 @dataclass(frozen=True)
 class UIConfig:
-    """`config/ui_config.yaml` の中身。
+    """`app/config/ui_config.yaml` の中身。
 
     **最上位は2群に分かれている。**
 
@@ -171,7 +169,7 @@ class UIConfig:
     benchmarks: Benchmarks
     #: 割り付けパターンとは独立に必ず入れる集計軸（`survey_defaults.output.base_segments`）。
     base_segments: tuple[str, ...] = ("total", "sex")
-    #: この画面が作る調査の種類（`SPEC_PHASE1.md` §3.0）。設定に置いてあるのは、
+    #: この画面が作る調査の種類（`SPEC.md` §3.0）。設定に置いてあるのは、
     #: 将来ほかの種別の画面を作るときにコードではなく設定で切り替えられるようにするため。
     survey_type: str = "concept"
 

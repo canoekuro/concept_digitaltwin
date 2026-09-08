@@ -1,4 +1,4 @@
-"""調査定義のデータモデル（`SPEC_PHASE1.md` §3）。
+"""調査定義のデータモデル（`SPEC.md` §3）。
 
 このモジュールは **pyspark に依存しない**。調査定義の妥当性検証の大半を
 Spark を起動せずに単体テストできるようにするため。Spark の述語への変換は
@@ -26,26 +26,6 @@ class SurveyType(StrEnum):
 
     #: コンセプト調査。案を提示して購入意向・新規性などを聞く。
     CONCEPT = "concept"
-
-
-class SampleOverlap(StrEnum):
-    """誰が何を見るか。コンセプト**間**のサンプル関係（§5.2）。
-
-    1ペルソナが評価するコンセプト数 m の連続体として定義される
-    （コンセプト総数を K とすると disjoint=1 / allow_overlap=2〜K-1 / same=K）。
-    どの値でも、同じ人に同じコンセプトが2回当たることはない（§5.0）。
-    """
-
-    DISJOINT = "disjoint"
-    ALLOW_OVERLAP = "allow_overlap"
-    SAME = "same"
-
-
-class Presentation(StrEnum):
-    """どう見せるか（§5.1）。"""
-
-    SEQUENTIAL = "sequential"
-    SIMULTANEOUS = "simultaneous"
 
 
 class RememberMode(StrEnum):
@@ -99,14 +79,6 @@ class Remember:
 
 #: 何も書かなかった設問の記憶。**調査全体の設定からは引かない。**
 NO_MEMORY = Remember(RememberMode.NONE)
-
-
-class Rotation(StrEnum):
-    """提示順の決め方（§5.2）。"""
-
-    NONE = "none"
-    RANDOM = "random"
-    BALANCED = "balanced"
 
 
 class QuotaMode(StrEnum):
@@ -171,91 +143,6 @@ DEFAULT_REQUEST_TIMEOUT_SEC = 60
 #: 指示行にだけ入る値で、実際の打ち切りは `model.max_tokens_reasoning` が担う。
 DEFAULT_REASONING_MAX_LENGTH = 80
 
-#: 改称したトップレベル項目と、書き換え方。
-#:
-#: 「ジョブ」は社内で別の意味を持つ語なので、調査基盤の中心概念には使わない。
-#: 黙って読めてしまうと用語が二重に残るため、明示的に停止させる。
-RENAMED_TOP_LEVEL_KEYS = {
-    "job": (
-        "トップレベルの job: は survey: に改称した。"
-        "job.id → survey.id、job.name → survey.name に書き換えること。"
-        "あわせて Delta テーブルの job_id 列も survey_id に変わったため、"
-        "既存の responses / screener_responses / panels / runs / aggregates は作り直しが要る。"
-    ),
-    "model": (
-        "トップレベルの model: は main_survey.model: に移した。"
-        "調査定義をスクリーニング（screening:）と本調査（main_survey:）に分け、"
-        "それぞれが model / prompt / persona_card を持つ形にしたため（§3）。"
-        "この block をそのまま main_survey: の下に入れること。"
-    ),
-    "prompt": (
-        "トップレベルの prompt: は main_survey.prompt: に移した（§3）。"
-        "ただし中身は3つに分かれる。"
-        " system / headings / rules（single・scale・multi・open・numeric）は main_survey.prompt へ。"
-        " persona_fields は main_survey.persona_card.persona_fields へ。"
-        " infer_system は screening.prompt.system へ、rules.infer は screening.prompt.rule へ。"
-    ),
-}
-
-#: 廃止したフィールドと、3軸での書き換え方（§5.4）。
-REMOVED_DESIGN_FIELDS = {
-    "type": (
-        "design.type は廃止した。2軸（§5）と設問ごとの記憶（§5.1）で書くこと。"
-        " monadic → sample_overlap: disjoint / presentation: sequential。"
-        " sequential_monadic → sample_overlap: same / presentation: sequential。"
-        " comparative → sample_overlap: same / presentation: simultaneous。"
-        " いずれも会話履歴を保つなら、各設問に remember: all を書く。"
-    ),
-    "memory": (
-        "design.memory は廃止した。記憶は調査全体ではなく**設問の性質**なので、"
-        "questions[].remember で設問ごとに指定すること（§5.1）。"
-        " none → 何も書かない（既定）。"
-        " full_session → 全設問に remember: all。"
-        " within_stimulus → 各設問に、同じコンセプトの先行設問のIDを並べる。"
-        "調査全体の設定から remember の意味が変わる形をやめたので、"
-        "remember の値は調査定義を読むだけで意味が決まる。"
-    ),
-    "balance_within_cell": (
-        "design.balance_within_cell は廃止した。sample_overlap: disjoint の"
-        "セル内均等割り当ては常に適用され、無効化できない（§5.2）。"
-    ),
-}
-
-
-#: スクリーナーで方式に合わない書き方をしたときの案内（§4.2）。
-#:
-#: `assume` / `infer` は選択肢を提示しない。`options` と `pass_if` を書かせても
-#: 使い道が無く、「設定したつもり」の記録だけが残るため、自然言語の `conditions` に寄せた。
-MISPLACED_SCREENER_KEYS = {
-    "questions": (
-        "mode: assume / infer では questions: を書けない。選択肢を提示しないため"
-        " options や pass_if に意味が無い。対象者条件は conditions: に自然言語で書くこと"
-        "（questions[].premise に書いていた文言をそのまま移せばよい）。"
-    ),
-    "conditions": (
-        "mode: ask では conditions: を書けない。実際に選択肢を見せて答えさせるため、"
-        " questions: に text / options / pass_if を書くこと。"
-        "ペルソナカードに載せる前提文は questions[].premise で指定する。"
-    ),
-}
-
-
-#: `mode: infer` では書けなくなったキーと、その行き先（§4.2）。
-#:
-#: `logic` は以前、判定プロンプトに「すべての条件を満たす人物を選んでください」という
-#: 一文を割り込ませていた。設定から触れないその文が `prompt.rule` の直前という最も効く
-#: 位置に入るため、`prompt` をどう書き換えても判定が動かなかった。文を消した以上
-#: `logic` は `infer` で何もしないので、黙って無視せず書けなくする。
-UNUSED_INFER_SCREENER_KEYS = {
-    "logic": (
-        "mode: infer では logic: を書けない。判定の指示は screening.prompt.rule に"
-        "一本化した（すべての条件を満たすのか、いずれかで足りるのかは、その文中に書くこと）。"
-        "以前は logic から判定プロンプトに一文を差し込んでいたが、prompt.rule の直前に"
-        "入るため prompt を書き換えても効かなくなっていた。"
-        " logic: が効くのは mode: ask（pass_if の結合方法）だけ。"
-    ),
-}
-
 
 #: `model` / `infer.model` から廃止したキーと、その理由。
 REMOVED_MODEL_FIELDS = {
@@ -263,106 +150,6 @@ REMOVED_MODEL_FIELDS = {
         "temperature は廃止した。最新モデルではサンプリングパラメータの指定が"
         "非推奨・無効化される傾向にあるため、リクエストに載せずエンドポイント既定に"
         "任せる（§6.3）。この行を削除すること。"
-    ),
-}
-
-
-#: `questions` から廃止したキーと、その理由。
-#: `slot` の無い旧形式（設問＝全コンセプトに繰り返すテンプレート）への案内。
-#:
-#: 旧形式では `questions` の各設問が assigned_stimuli の全件に対して繰り返された。
-#: `slot` の既定 1 で黙って読むと、**2つ目以降のコンセプトが聞かれずに消える**。
-#: 結果の意味が変わるので、m > 1 の調査定義は読まずに停止させる（§11 E6）。
-LEGACY_QUESTIONS_WITHOUT_SLOT = (
-    "questions は全コンセプトに繰り返すテンプレートではなくなった。"
-    "設問ごとに slot（何番目に提示するコンセプトについて聞くか、1始まり）を書き、"
-    "1ペルソナが評価するコンセプト数ぶん展開すること（§3.1）。"
-    "同じ問いをコンセプト横断で比較するには measure に共通のキーを書く"
-    "（省略すると id 単位になり、コンセプト比較表が組めない）。"
-    "例: id: Q1_1 / slot: 1 / measure: purchase_intent、"
-    "id: Q1_2 / slot: 2 / measure: purchase_intent。"
-    "設問間の記憶は questions[].remember で指定する（§5.1）。"
-)
-
-REMOVED_QUESTION_FIELDS = {
-    "scale_points": (
-        "scale_points は廃止した。読み込みと検証（5 / 7 / 10 のいずれか）はしていたが、"
-        "プロンプトにも集計にも一切効いていなかった——選択肢数は options の長さから取っている。"
-        "「設定したつもり」の記録だけが残るため受け付けない。この行を削除すること。"
-        "尺度の点数を決めるのは options の数そのものなので、"
-        "5段階にしたいなら options を5つ並べればよい。"
-    ),
-}
-
-
-#: `prompt` から廃止したキーと、その理由。
-REMOVED_PROMPT_FIELDS = {
-    "template_version": (
-        "template_version は廃止した。生成AIの回答には再現性が無く、版を揃えても"
-        "過去の結果と厳密には比較できないうえ、利用者がプロンプトを自由に書き換える"
-        "運用を想定しているため、版管理という前提自体が実態に合わない。この行を削除すること。"
-    ),
-    "persona_fields": (
-        "prompt.persona_fields は main_survey.persona_card.persona_fields に移した（§6.1）。"
-        "ペルソナカードの中身を prompt から分け、属性行・総括文とまとめて"
-        "persona_card: の下で指定する形にしたため。"
-    ),
-    "infer_system": (
-        "prompt.infer_system は screening.prompt.system に移した（§4.2）。"
-        "回答生成のプロンプトと判定のプロンプトを同じ block に置くと、"
-        "どちらを直したのか読み取れなくなるため。"
-    ),
-}
-
-
-#: `panel` から移したキーと、その行き先。
-MOVED_PANEL_FIELDS = {
-    "screener": (
-        "panel.screener: はトップレベルの screening: に移した（§4.2）。"
-        "判定のモデル・プロンプト・ペルソナカードと同じ block にまとめるため、"
-        "panel の下から出した。"
-        " mode / conditions / questions / logic / oversample_factor はそのまま screening: の直下へ。"
-        " infer.batch_size → screening.batch_size、infer.model → screening.model、"
-        "infer.persona_fields → screening.persona_card.persona_fields に移すこと。"
-    ),
-}
-
-
-#: `prompt.rules.reasoning` を1本の文で書いていた旧形式への案内（§6.3）。
-#:
-#: 黙って全タイプに使い回すと、置き換えで設問タイプ固有の指示が落ちる。実際に
-#: `multi` の「すべて、カンマ区切りで」が消え、複数回答なのに1つだけ選ばせる問いに
-#: なっていた。文字列のまま読めてしまう形にはせず、停止して書き分けさせる。
-FLAT_REASONING_RULE = (
-    "prompt.rules.reasoning は設問タイプごとの入れ子にした（§6.3）。"
-    "reasoning: の下に single / scale / multi を書くこと。"
-    "1本の文を全タイプで使い回すと、設問タイプの指示行を置き換えたときに"
-    "そのタイプ固有の指示が落ちる——multi の「すべて、カンマ区切りで」が消え、"
-    "複数回答なのに1つだけ選ばせる問いになっていた。"
-    "従来の文言を残すなら3キーに同じ文を書けばよいが、multi には"
-    "「すべて挙げる」旨を書き足すこと。"
-)
-
-
-#: `prompt.rules` から移したキーと、その行き先。
-MOVED_PROMPT_RULE_FIELDS = {
-    "infer": (
-        "prompt.rules.infer は screening.prompt.rule に移した（§4.2）。"
-        "設問タイプごとの回答指示文ではないため、for_type() から引ける位置に置くと"
-        "設問タイプの一種だと読み違える。"
-    ),
-}
-
-
-#: ペルソナカードから廃止したキーと、その理由。本調査・スクリーニング共通。
-REMOVED_PERSONA_CARD_FIELDS = {
-    "include_attributes": (
-        "include_attributes は廃止した。attributes: に載せたい属性を列挙すること"
-        "（属性行を出さないなら attributes: [] と書く）。真偽値とリストの両方を持つと"
-        " include_attributes: false と非空の attributes: が矛盾しうるため、リストに寄せた。"
-        " 従来の既定と同じにするなら"
-        " [{field: sex}, {field: age, suffix: 歳}, {field: prefecture, suffix: 在住},"
-        " {field: marital_status}, {field: education_level}, {field: occupation_raw}]。"
     ),
 }
 
@@ -398,42 +185,6 @@ class QuotaCell:
 class Quotas:
     mode: QuotaMode
     cells: tuple[QuotaCell, ...]
-
-
-class ScreenerMode(StrEnum):
-    """対象者条件の満たし方（§4.2）。費用と、得られるものが違う。"""
-
-    #: 実際に聞いて通過者だけを残す。インシデンスを実測できる。
-    ASK = "ask"
-    #: 聞かずに条件を前提として全候補に与える。費用は0だが、インシデンスは測れない。
-    ASSUME = "assume"
-    #: 別のセッションの LLM に候補をまとめて渡し、条件に合致する蓋然性が高い者だけに
-    #: 属性を与える。`ask` より安く、`assume` のような全員への強制も避けられる。
-    #: 聞いてはいないので通過率は**推定値**であり、実測値とは別枠に記録する。
-    INFER = "infer"
-
-
-class ScreenerLogic(StrEnum):
-    """複数設問がある場合の通過条件。"""
-
-    ALL = "all"
-    ANY = "any"
-
-
-@dataclass(frozen=True)
-class ScreenerQuestion:
-    id: str
-    text: str
-    type: QuestionType
-    options: tuple[str, ...]
-    pass_if: tuple[int, ...]
-    #: ペルソナカードに載せるときの短い見出し。省略時は `text` を使う。
-    label: str | None = None
-    #: 通過者のペルソナカードに載せる前提文。省略時は設問文と通過選択肢から組み立てる。
-    premise: str | None = None
-
-    def card_label(self) -> str:
-        return self.label or self.text
 
 
 @dataclass(frozen=True)
@@ -733,70 +484,29 @@ def _default_screening_persona_card() -> PersonaCardConfig:
 class ScreeningConfig:
     """スクリーニング定義（`screening:`、§4.2）。
 
-    **方式ごとに必要な形が違うので、書く場所を分けている。**
-
-    - `ask` … `questions`。本人に選択肢を見せて答えさせるので、選択肢と通過判定が要る
-    - `assume` / `infer` … `conditions`。自然言語の対象者条件だけでよい。
-      `assume` はそれを前提として与え、`infer` はそれを判定用 LLM に見せる。
-      どちらも選択肢を提示しないので、`options` や `pass_if` を書かせる意味がない
+    **方式は1つ。** 対象者条件（`conditions`）を判定用 LLM に見せ、条件に合致する
+    蓋然性が高い候補だけに属性を与える。本人には聞いていないので、通過率は
+    **推定値**であり実測値ではない（`runs.screener_incidence_estimated`）。
 
     並びは本調査（`main_survey`）と対称に model → prompt → persona_card → その他。
     """
 
-    #: 判定に使うモデル。省略したキーは `main_survey.model` を引き継ぐ（`infer` のみ）。
+    #: 判定に使うモデル。省略したキーは `main_survey.model` を引き継ぐ。
     model: InferModelOverrides = field(default_factory=lambda: InferModelOverrides())
-    #: 判定プロンプト（`infer` のみ）。
+    #: 判定プロンプト。
     prompt: ScreeningPromptConfig = field(default_factory=ScreeningPromptConfig)
-    #: 判定に見せるペルソナ像（`infer` のみ）。
+    #: 判定に見せるペルソナ像。
     persona_card: PersonaCardConfig = field(default_factory=_default_screening_persona_card)
-    mode: ScreenerMode = ScreenerMode.ASK
-    #: `ask` のスクリーナー設問。他の方式では空。
-    questions: tuple[ScreenerQuestion, ...] = ()
-    #: `assume` / `infer` の対象者条件（自然言語）。`ask` では空。
+    #: 対象者条件（自然言語）。**言い換えずにそのまま**判定プロンプトと前提ブロックへ渡す。
     conditions: tuple[str, ...] = ()
-    #: `ask` 専用。複数の設問の通過判定をどう結合するか。`infer` では判定の指示を
-    #: `prompt.rule` に一本化しているので効かない（loader が書くことを止める）。
-    logic: ScreenerLogic = ScreenerLogic.ALL
-    #: `ask` / `infer` のときのみ意味を持つ。何倍の候補を抽出して判定するか。
+    #: 何倍の候補を抽出して判定するか。
     oversample_factor: int = 4
-    #: 1回の判定に渡すペルソナ数（`infer` のみ）。
+    #: 1回の判定に渡すペルソナ数。
     batch_size: int = 20
 
     def condition_texts(self) -> tuple[str, ...]:
-        """対象者条件の文言。方式によらずここから取る。
-
-        `ask` は設問から組み立てる（`premise` があればそれ、無ければ設問文と通過選択肢）。
-        `assume` / `infer` は `conditions` をそのまま使う。**言い換えはしない。**
-        """
-        if not self.asks:
-            return self.conditions
-        lines = []
-        for question in self.questions:
-            if question.premise:
-                lines.append(question.premise)
-                continue
-            passing = [
-                question.options[code - 1]
-                for code in question.pass_if
-                if 1 <= code <= len(question.options)
-            ]
-            label = question.card_label()
-            lines.append(f"{label}: {'、'.join(passing)} のいずれか" if passing else label)
-        return tuple(lines)
-
-    @property
-    def asks(self) -> bool:
-        """本人に聞くか。インシデンスを実測できるのはこの方式だけ。"""
-        return self.mode is ScreenerMode.ASK
-
-    @property
-    def infers(self) -> bool:
-        return self.mode is ScreenerMode.INFER
-
-    @property
-    def calls_llm(self) -> bool:
-        """判定に LLM を呼ぶか。`assume` だけが呼ばない。"""
-        return self.mode in (ScreenerMode.ASK, ScreenerMode.INFER)
+        """対象者条件の文言。**言い換えはしない。**"""
+        return self.conditions
 
 
 @dataclass(frozen=True)
@@ -826,61 +536,6 @@ class Stimulus:
 
 
 @dataclass(frozen=True)
-class Design:
-    """提示設計。2軸で指定する（§5）。既定は反実仮想モナディック（§5.3）。
-
-    **「覚えているか」はここには無い。** 記憶は調査全体の性質ではなく設問の性質なので、
-    `questions[].remember` が持つ（§5.1）。
-    """
-
-    sample_overlap: SampleOverlap = SampleOverlap.SAME
-    presentation: Presentation = Presentation.SEQUENTIAL
-    stimuli_per_persona: int | None = None
-    rotation: Rotation = Rotation.NONE
-
-    def stimuli_count_per_persona(self, total_stimuli: int) -> int:
-        """1ペルソナが評価するコンセプト数 m を返す（§5.2）。
-
-        **`stimuli_per_persona` が `sample_overlap` と矛盾していたら送出する。**
-        黙って辻褄の合う値を返すと、呼び出し側が「m はこれだ」と信じて先へ進み、
-        設計の誤りが設問側の誤りとして報告される——`sample_overlap: disjoint` に
-        `stimuli_per_persona: 2` を書いた調査定義が、「m=1 なのに slot 2 の設問がある」
-        と**設問を指して**止まっていた。直すべき行に辿り着けない。
-
-        矛盾の条件をここ1箇所に置くのが要点。呼び出し側（`panel/loader.py` の
-        読み込み時ガード）は例外を捕まえて自分の判定を飛ばし、`validate` が
-        `_check_design()` で本来の理由を E6 として報告する。
-        """
-        match self.sample_overlap:
-            case SampleOverlap.DISJOINT:
-                if self.stimuli_per_persona not in (None, 1):
-                    raise SurveyDefinitionError(
-                        "sample_overlap: disjoint では 1人1コンセプトなので "
-                        f"stimuli_per_persona に {self.stimuli_per_persona} は指定できない"
-                    )
-                return 1
-            case SampleOverlap.SAME:
-                if self.stimuli_per_persona is not None:
-                    raise SurveyDefinitionError(
-                        f"sample_overlap: same では全 {total_stimuli} 件を評価するので "
-                        f"stimuli_per_persona（{self.stimuli_per_persona}）は指定できない"
-                    )
-                return total_stimuli
-            case SampleOverlap.ALLOW_OVERLAP:
-                if self.stimuli_per_persona is None:
-                    raise SurveyDefinitionError(
-                        "sample_overlap: allow_overlap では stimuli_per_persona が必須"
-                    )
-                if not 2 <= self.stimuli_per_persona <= total_stimuli - 1:
-                    raise SurveyDefinitionError(
-                        f"sample_overlap: allow_overlap の stimuli_per_persona は "
-                        f"2〜{total_stimuli - 1} の範囲（指定値: {self.stimuli_per_persona}）"
-                    )
-                return self.stimuli_per_persona
-        raise SurveyDefinitionError(f"未知の sample_overlap: {self.sample_overlap}")
-
-
-@dataclass(frozen=True)
 class Question:
     """1設問。**実行時にも1回しか聞かれない**（§3.1）。
 
@@ -898,12 +553,11 @@ class Question:
     top_box: tuple[int, ...] | None = None
     max_length: int | None = None
     #: 何番目に提示するコンセプトについて聞くか（1始まり）。実行時に
-    #: `panels.assigned_stimuli[slot - 1]` を引く。コンセプトIDではなく**提示順の位置**なので、
-    #: `rotation` や `sample_overlap` による割り当ての違いと直交する。
-    #: `presentation: simultaneous` は全案を同時に見せるので slot を持たない（常に 1）。
+    #: `panels.assigned_stimuli[slot - 1]` を引く。**コンセプトIDではなく提示順の位置**
+    #: なので、パネルの割り当てが変わっても設問側を書き換えずに済む。
     slot: int = 1
     #: コンセプト横断で「同じ設問」として束ねるキー（§8）。省略時は `id` と同じ。
-    #: slot ごとに設問を展開すると `id` が別物になるので、コンセプト比較表を組むには
+    #: slot ごとに設問を展開すると `id` が別物になるので、コンセプトを横断して比べるには
     #: 何と何が同じ問いなのかを別に持つ必要がある。
     measure: str | None = None
     #: どの設問の記憶を持ったままこの設問に入るか（§5.1）。既定は何も持たない。
@@ -966,7 +620,8 @@ class ModelConfig:
 @dataclass(frozen=True)
 class OutputConfig:
     segments: tuple[str, ...] = ("total",)
-    formats: tuple[str, ...] = ("delta",)
+    #: 既定でファイルを出す。集計結果はテーブルに保存しないので、書かないと何も残らない。
+    formats: tuple[str, ...] = ("csv", "xlsx")
 
 
 @dataclass(frozen=True)
@@ -977,7 +632,6 @@ class SurveyDefinition:
     name: str
     panel: PanelConfig
     stimuli: tuple[Stimulus, ...]
-    design: Design
     questions: tuple[Question, ...]
     #: 本調査のモデル（`main_survey.model`）。
     model: ModelConfig
@@ -994,7 +648,7 @@ class SurveyDefinition:
     screening: ScreeningConfig | None = None
     #: 実行記録から**集計に要る範囲だけ**復元したものか（`loader.survey_from_record()`）。
     #:
-    #: True のとき `model` / `prompt` / `persona_card` / `design` は記録を読んでおらず
+    #: True のとき `model` / `prompt` / `persona_card` は記録を読んでおらず
     #: 既定値のまま入っている。**この定義で実行してはならないし、何をどう聞いたかの
     #: 根拠にもしてはならない。** 実際の設定は `raw`（＝定義の全文）と
     #: `runs.metadata_json` に残っている。
@@ -1004,4 +658,13 @@ class SurveyDefinition:
 
     @property
     def stimuli_count(self) -> int:
+        return len(self.stimuli)
+
+    @property
+    def stimuli_per_persona(self) -> int:
+        """1ペルソナが評価するコンセプト数。**全案を1件ずつ順に評価する**（§5）。
+
+        提示設計は反実仮想モナディック固定で、設定では変えられない。同じ人に同じ
+        コンセプトが2回当たることはなく（§5.0）、コンセプトごとの評価者数は揃う。
+        """
         return len(self.stimuli)

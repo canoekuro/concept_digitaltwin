@@ -1,4 +1,4 @@
-"""プロンプト組み立て（`SPEC_PHASE1.md` §6.1）。
+"""プロンプト組み立て（`SPEC.md` §6.1）。
 
 このモジュールは **pyspark に依存しない**。純関数のみで構成し、Spark を
 起動せずに単体テストできるようにする。
@@ -24,7 +24,7 @@ from persona_sim.panel.schema import (
     Stimulus,
 )
 
-#: [system] ブロックの既定。`SPEC_PHASE1.md` §6.1 と一字一句同じにすること。
+#: [system] ブロックの既定。`SPEC.md` §6.1 と一字一句同じにすること。
 #: 調査定義の `prompt.system` で差し替えられる。
 SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT
 
@@ -164,8 +164,7 @@ def build_user_message(
 ) -> str | list[dict[str, Any]]:
     """"■あなたのプロフィール" → 提示物 → 設問 の順に連結した [user] メッセージ。
 
-    stimuli が複数のときは提示物ブロックを順に並べる（presentation: simultaneous 用）。
-    ブロック間は空行1つで区切る。
+    stimuli が複数のときは提示物ブロックを順に並べる。ブロック間は空行1つで区切る。
 
     stimulus.image_mode is ImageMode.NATIVE かつ image_uri が指定されている場合は
     list[dict[str, Any]]（テキストパート＋画像パート）として組み立てる。

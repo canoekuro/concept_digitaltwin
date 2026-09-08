@@ -8,17 +8,17 @@
 ### 1. ルール改定
 
 **`AGENTS.md` の秘密情報の定義からサービングエンドポイント名を外した。** 秘密ではないうえ、
-何で回したかが読み取れないと入力を再現できない（`SPEC_PHASE1.md` §9.1）。あわせて
+何で回したかが読み取れないと入力を再現できない（`SPEC.md` §9.1）。あわせて
 「カタログ名・スキーマ名は書かない。テーブルの置き場所は環境変数からのみ解決する」を
 独立した項目として書き分けた。両者を1行にまとめていたために、片方を守ろうとすると
 もう片方まで巻き込む状態になっていた。
 
 プレースホルダ `REPLACE_WITH_SERVING_ENDPOINT_NAME` / `REPLACE_WITH_JUDGE_ENDPOINT` /
 `<サービングエンドポイント名>` を、リポジトリで実績のある `databricks-gemini-3-5-flash-lite`
-に置き換えた（`SPEC_PHASE1.md` §3・§4.2、`examples/survey_sample.yaml`、
+に置き換えた（`SPEC.md` §3・§4.2、`examples/survey_sample.yaml`、
 `notebooks/quickstart.ipynb`）。
 
-**Web UI をフェーズ1のスコープに入れた。** `SPEC_PHASE1.md` §1.2 の「やらないこと」から
+**Web UI をフェーズ1のスコープに入れた。** `SPEC.md` §1.2 の「やらないこと」から
 外し、§10.3 として CLI／ノートブック／UI の責務境界を1箇所に定義した。
 
 ### 2. screener スキーマの再設計（破壊的変更）
@@ -111,7 +111,7 @@ Databricks Apps のコンテナが再起動しうるうえ、`run_survey()` が�
 | Spark マーク付きテスト（`-m spark`） | 63 passed |
 | `ruff check persona_sim/ tests/` | All checks passed |
 | `REPLACE_WITH_` の残存 | 0件 |
-| `SPEC_PHASE1.md` §1.2 の Web UI 記述 | 削除済み |
+| `SPEC.md` §1.2 の Web UI 記述 | 削除済み |
 
 新規テスト `tests/test_uiconfig.py`（30件）で次を確認した。
 

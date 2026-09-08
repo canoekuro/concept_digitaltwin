@@ -1,4 +1,4 @@
-"""クロス集計表とコンセプト比較表の算出（`SPEC_PHASE1.md` §7.1・§7.2）。
+"""クロス集計表の算出（`SPEC.md` §7.1）。
 
 このモジュールは **pyspark に依存しない**。純関数だけで構成し、集計の数値そのものを
 Spark を起動せずに単体テストできるようにする（`run/parsing.py` と同じ方針）。
@@ -89,20 +89,6 @@ class Crosstab:
     option_labels: tuple[str, ...]
     rows: tuple[CrosstabRow, ...]
     notes: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class ConceptSummaryRow:
-    """コンセプト比較表の1行（§7.2）。"""
-
-    stimulus_id: str
-    stimulus_name: str
-    segment: str
-    segment_value: str
-    n: int
-    n_unflagged: int
-    #: `measure` ごとの (T2B, 平均)。値が出せない場合は None。
-    metrics: Mapping[str, tuple[float | None, float | None]] = field(default_factory=dict)
 
 
 # --------------------------------------------------------------------------- #
@@ -343,46 +329,3 @@ def crosstabs(
                 )
             )
     return tables
-
-
-def concept_summary(
-    survey: SurveyDefinition, answers: Sequence[Answer], segments: Sequence[str]
-) -> list[ConceptSummaryRow]:
-    """コンセプトを表側、指標を表頭にした横持ち表（§7.2）。
-
-    `segments` に `total` だけを渡せばトップライン、属性軸を渡せばセグメント別版になる。
-    """
-    names = {stimulus.id: stimulus.name for stimulus in survey.stimuli}
-    measures = measure_of(survey)
-    tabulated = tabulated_measures(survey)
-    rows: list[ConceptSummaryRow] = []
-
-    by_stimulus = _by_stimulus(answers)
-
-    for stimulus in survey.stimuli:
-        subset = by_stimulus.get(stimulus.id, [])
-        for segment, value, group in group_by_segments(subset, segments):
-            metrics: dict[str, tuple[float | None, float | None]] = {}
-            n = 0
-            n_unflagged = 0
-            # セグメント値ごとに設問数だけ全走査すると、軸を増やすほど二乗で効く。
-            by_measure = _by_measure(group, measures)
-            for question in tabulated:
-                metric = compute_metric(question, by_measure.get(question.measure_key, []))
-                metrics[question.measure_key] = (metric.top_box, metric.mean)
-                # 行の n は「そのコンセプトを評価した人数」。設問ごとの有効回答数の最大を採る
-                # （設問によってパース失敗が違うため、最も多く答えられた設問を母数の目安にする）。
-                n = max(n, metric.n)
-                n_unflagged = max(n_unflagged, metric.n_unflagged)
-            rows.append(
-                ConceptSummaryRow(
-                    stimulus_id=stimulus.id,
-                    stimulus_name=names.get(stimulus.id, stimulus.id),
-                    segment=segment,
-                    segment_value=value,
-                    n=n,
-                    n_unflagged=n_unflagged,
-                    metrics=metrics,
-                )
-            )
-    return rows

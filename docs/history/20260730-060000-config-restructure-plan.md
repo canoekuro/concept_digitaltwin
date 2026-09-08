@@ -104,7 +104,7 @@ quickstart notebook、テスト約10ファイルが連動する。
 
 - `examples/survey_sample.yaml` / `examples/survey_sample_smoke.yaml`
 - `notebooks/quickstart.ipynb`（実行セルとコメントアウトされた本番規模セルの両方）
-- `SPEC_PHASE1.md` §3 / §4.2 / §6.1 / §10.3、`docs/SPEC_UI.md` §2 / §3.2 / §3.4、
+- `SPEC.md` §3 / §4.2 / §6.1 / §10.3、`docs/SPEC_UI.md` §2 / §3.2 / §3.4、
   `README.md`、`deploy/README.md`
 
 ## 検証方法

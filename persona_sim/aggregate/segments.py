@@ -1,4 +1,4 @@
-"""集計軸の解決（`SPEC_PHASE1.md` §7.1 の `output.segments`）。
+"""集計軸の解決（`SPEC.md` §7.1 の `output.segments`）。
 
 `output.segments` に書けるのは次の3種類。
 

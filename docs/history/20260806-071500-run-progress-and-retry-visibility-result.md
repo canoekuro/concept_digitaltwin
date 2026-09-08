@@ -60,7 +60,7 @@
 - `ScreeningResult.warnings` は**フィールドだけあって誰も書き込んでいなかった**ので、ここが最初の書き手。
   あわせて CLI の screen 経路で `result.warnings` を印字するようにした（従来は run 経路のみ）。
   `screen_survey()` は戻り口が3箇所あるので `_finish()` に切り出して全経路で同じものを載せている。
-- `run_metadata.json` の `model.endpoint_retries` に残す。`SPEC_PHASE1.md` §9 の JSON 例と
+- `run_metadata.json` の `model.endpoint_retries` に残す。`SPEC.md` §9 の JSON 例と
   §11 の注記を同時に更新した。
 
 ### 4. ノートブック（`notebooks/run_survey.ipynb`）

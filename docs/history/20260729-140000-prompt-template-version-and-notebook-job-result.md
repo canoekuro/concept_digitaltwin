@@ -18,7 +18,7 @@
   `_prompt_sample()` の `template_version`、`render_prompt_sample()` の表の該当行を削除。
 - `config/ui_config.yaml`: `prompt.template_version: "ui-v1"` と、版据え置き警告を避けるための
   付随コメント3行を削除。
-- `SPEC_PHASE1.md`: §3 のスキーマ例、§6.1 の2つの YAML 例（`persona_fields` 上書き例／
+- `SPEC.md`: §3 のスキーマ例、§6.1 の2つの YAML 例（`persona_fields` 上書き例／
   `system` 上書き例）から該当行を削除。§6.1 の版管理の説明を「廃止した。理由: 生成AIの回答に
   再現性が無く、版による比較が成立しにくいこと。利用者がプロンプトを自由に書き換える前提
   であること」に置き換え。§9 の `run_metadata.json` 例から `prompt_template_version` と

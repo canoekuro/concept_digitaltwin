@@ -1,4 +1,4 @@
-"""層化抽出（`SPEC_PHASE1.md` §4.1）。
+"""層化抽出（`SPEC.md` §4.1）。
 
 **乱数によるサンプリングを使わない。** `DataFrame.sample(seed=…)` は
 パーティション数や並列度で結果が変わり、「seed と各バージョンが揃えば同一結果が
@@ -39,7 +39,7 @@ from persona_sim.panel.schema import SurveyDefinition
 if TYPE_CHECKING:  # pragma: no cover
     from pyspark.sql import DataFrame, SparkSession
 
-#: パネルの役割（`SPEC_PHASE1.md` §2.2）。
+#: パネルの役割（`SPEC.md` §2.2）。
 ROLE_CANDIDATE = "candidate"
 ROLE_MAIN = "main"
 ROLE_RESERVE = "reserve"

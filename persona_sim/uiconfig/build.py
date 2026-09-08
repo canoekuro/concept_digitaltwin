@@ -1,7 +1,7 @@
 """画面入力と UI 設定から調査定義を組み立てる（`docs/SPEC_UI.md` §4）。
 
 ```
-config/ui_config.yaml ─┐
+app/config/ui_config.yaml ─┐
                        ├→ build_survey() → 調査定義（§3）→ panel → screen → run → aggregate
 画面入力（SurveyForm）─┘
 ```
@@ -109,18 +109,12 @@ def build_survey_dict(
         {"id": f"{_STIMULUS_PREFIX}{index}", "name": concept.name, "text": concept.text}
         for index, concept in enumerate(form.concepts, start=1)
     ]
-    # 反実仮想モナディック（§5.3）。UI からは変えられない。
-    # 全員が全案を独立したセッションで評価するので、案どうしを直接比べられる。
-    built["design"] = {
-        "sample_overlap": "same",
-        "presentation": "sequential",
-        "rotation": "none",
-    }
     built["questions"] = _expand_questions(
         form.questions or ui.default_questions, len(form.concepts)
     )
-    # formats は書かない。結果は画面で見て、ダウンロードは押されたその場で生成するので、
-    # ジョブ側でファイルを書き出す必要が無い（調査定義側の既定 delta のみになる）。
+    # formats は書かない。結果は画面で見て、ダウンロードは押されたその場で生成するが、
+    # ジョブ側の書き出し（調査定義の既定 csv / xlsx）はそのまま残しておく——
+    # 画面を通さずに結果を配れる経路が1本あったほうがよい。
     built["output"] = {"segments": list(ui.segments_for(pattern.band))}
     return built
 
@@ -131,15 +125,15 @@ def _expand_questions(
     """画面の設問リストを、コンセプトの数だけ `slot` 展開する（§3.1）。
 
     調査定義の設問は「何番目に提示するコンセプトについて聞くか」に紐づくので、
-    全案を評価する設計（`sample_overlap: same`）では案の数だけ設問が要る。
+    全案を評価する（反実仮想モナディック・§5）以上は案の数だけ設問が要る。
     画面はコンセプトごとに設問を作らせないため、ここで機械的に展開する。
 
     展開後の `id` は一意（`{元のid}_s{slot}`）にし、元の `id` を `measure` に残す。
-    残さないとコンセプト比較表が組めない——どの設問とどの設問が同じ問いなのかは、
+    残すとコンセプトを横断して比べられる——どの設問とどの設問が同じ問いなのかは、
     展開した側にしか分からない（§8）。
 
-    `remember` は書かない。UI は反実仮想モナディック固定（`memory: none`）で、
-    設問どうしが独立していることが案の直接比較を成り立たせているため。
+    `remember` は書かない。設問どうしが独立していることが案の直接比較を
+    成り立たせているため。
     """
     return [
         {**dict(question), "id": f"{question['id']}_s{slot}", "slot": slot, "measure": question["id"]}
@@ -180,26 +174,17 @@ def build_screening(ui: UIConfig, condition: str) -> dict[str, Any] | None:
 
     defaults = ui.screening
     screening: dict[str, Any] = {}
-    # `infer` 以外では判定の LLM を呼ばないので、モデル・プロンプト・カードは書かない。
-    # 使われない設定が調査定義に残ると「設定したつもり」の記録になる。
-    if defaults.mode == "infer":
-        for key, value in (
-            ("model", defaults.model),
-            ("prompt", defaults.prompt),
-            ("persona_card", defaults.persona_card),
-        ):
-            if value:
-                screening[key] = dict(value)
+    for key, value in (
+        ("model", defaults.model),
+        ("prompt", defaults.prompt),
+        ("persona_card", defaults.persona_card),
+    ):
+        if value:
+            screening[key] = dict(value)
 
-    screening["mode"] = defaults.mode
     screening["conditions"] = [text]
-    if defaults.mode != "infer":
-        # `infer` の判定指示は screening.prompt.rule に一本化されており、logic は効かない。
-        # 書くと調査定義の読み込みで停止する（`UNUSED_INFER_SCREENER_KEYS`）。
-        screening["logic"] = defaults.logic
-    if defaults.mode != "assume":
-        screening["oversample_factor"] = defaults.oversample_factor
-    if defaults.mode == "infer" and defaults.batch_size is not None:
+    screening["oversample_factor"] = defaults.oversample_factor
+    if defaults.batch_size is not None:
         screening["batch_size"] = defaults.batch_size
     return screening
 
@@ -221,7 +206,3 @@ def survey_id(name: str, now: datetime | None = None) -> str:
     suffix = secrets.token_hex(_ID_SUFFIX_BYTES)
     return f"{slug}_{stamp}_{suffix}" if slug else f"survey_{stamp}_{suffix}"
 
-
-def default_form_questions(ui: UIConfig) -> tuple[Mapping[str, Any], ...]:
-    """画面の設問フォームの初期値。編集させるので複製を返す。"""
-    return tuple(dict(question) for question in ui.default_questions)

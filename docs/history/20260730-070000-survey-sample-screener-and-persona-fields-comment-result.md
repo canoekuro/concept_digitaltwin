@@ -17,7 +17,7 @@
 ### `app/config/ui_config.yaml`
 
 - `main_survey.persona_card.persona_fields` の直前に、`personas_base`
-  （`SPEC_PHASE1.md` §2.1）で選べる定性（ナラティブ）フィールドを全9項目列挙する
+  （`SPEC.md` §2.1）で選べる定性（ナラティブ）フィールドを全9項目列挙する
   コメントを追加した（`cultural_background` / `professional_persona` /
   `sports_persona` / `arts_persona` / `travel_persona` / `culinary_persona` /
   `skills_and_expertise` / `hobbies_and_interests` / `career_goals_and_ambitions`）。

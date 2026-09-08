@@ -49,7 +49,7 @@
 | `persona_sim/panel/infer.py` | `judge_batch` をヘルパ経由に、`InferBatchResult` / `InferResult` のカウンタ |
 | `persona_sim/panel/screening.py` | 状態の生成、`ScreeningResult` のカウンタ、`_finish` の警告 |
 | `persona_sim/metadata.py` | model ブロックに `output_limit` |
-| `SPEC_PHASE1.md` §6.3 | 新挙動を記載 |
+| `SPEC.md` §6.3 | 新挙動を記載 |
 | `tests/test_budget.py` | **新規** |
 | `tests/test_databricks_client.py` / `test_session.py` / `test_infer.py` | 追加 |
 

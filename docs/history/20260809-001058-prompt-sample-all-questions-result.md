@@ -46,7 +46,7 @@
 
 ### 追随した文書
 
-- `SPEC_PHASE1.md` §7.4（出力ファイル一覧）と §9（説明文・JSON 例）。
+- `SPEC.md` §7.4（出力ファイル一覧）と §9（説明文・JSON 例）。
 - `notebooks/quickstart.ipynb` の説明セル。
 
 ## 2. 検証結果

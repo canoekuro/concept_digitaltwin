@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import pytest
 
+from persona_sim.errors import SurveyDefinitionError
 from persona_sim.panel.loader import survey_from_dict
 from persona_sim.panel.validate import validate_static
 from tests.conftest import base_survey_dict, with_remember
@@ -23,71 +24,30 @@ def test_base_survey_passes(survey_dict):
 
 
 # --------------------------------------------------------------------------- #
-# E6: 提示設計3軸の整合（§5）
+# 提示設計は反実仮想モナディック固定（§5）
 # --------------------------------------------------------------------------- #
 
 
-def test_simultaneous_requires_same():
+def test_the_design_block_is_not_accepted():
+    """提示設計は設定で変えられない。書いても黙って無視しない。"""
     data = base_survey_dict()
-    data["design"]["presentation"] = "simultaneous"
-    data["design"]["sample_overlap"] = "disjoint"
-    report = validate_static(survey_from_dict(data))
-    assert "E6" in _codes(report.errors)
+    data["design"] = {"sample_overlap": "disjoint"}
+    with pytest.raises(SurveyDefinitionError, match="design"):
+        survey_from_dict(data)
 
 
-def test_same_rejects_stimuli_per_persona():
+def test_every_persona_evaluates_every_concept():
     data = base_survey_dict()
-    data["design"]["stimuli_per_persona"] = 2
-    report = validate_static(survey_from_dict(data))
-    assert "E6" in _codes(report.errors)
+    survey = survey_from_dict(data)
+    assert survey.stimuli_per_persona == survey.stimuli_count == 3
 
 
-def test_disjoint_rejects_multiple_stimuli():
+def test_questions_must_cover_every_concept():
+    """コンセプト3件に対して slot が2つしか無ければ、3件目が黙って聞かれずに消える。"""
     data = base_survey_dict()
-    data["design"]["sample_overlap"] = "disjoint"
-    data["design"]["stimuli_per_persona"] = 2
-    report = validate_static(survey_from_dict(data))
-    assert "E6" in _codes(report.errors)
-
-
-def test_disjoint_allows_explicit_one():
-    data = base_survey_dict(slots=1)
-    data["design"]["sample_overlap"] = "disjoint"
-    data["design"]["stimuli_per_persona"] = 1
-    assert validate_static(survey_from_dict(data)).ok
-
-
-def test_allow_overlap_requires_stimuli_per_persona():
-    data = base_survey_dict()
-    data["design"]["sample_overlap"] = "allow_overlap"
-    report = validate_static(survey_from_dict(data))
-    assert "E6" in _codes(report.errors)
-
-
-@pytest.mark.parametrize("value", [1, 3, 4])
-def test_allow_overlap_rejects_out_of_range(value):
-    """コンセプト3件のとき m は 2 のみが有効（1 は disjoint、3 は same）。"""
-    data = base_survey_dict()
-    data["design"]["sample_overlap"] = "allow_overlap"
-    data["design"]["stimuli_per_persona"] = value
-    report = validate_static(survey_from_dict(data))
-    assert "E6" in _codes(report.errors)
-
-
-def test_allow_overlap_accepts_middle_value():
-    data = base_survey_dict(slots=2)
-    data["design"]["sample_overlap"] = "allow_overlap"
-    data["design"]["stimuli_per_persona"] = 2
-    assert validate_static(survey_from_dict(data)).ok
-
-
-def test_balanced_rotation_without_memory_warns():
-    """記憶が無ければ順序効果は起きないのでラテン方格は無意味（停止はしない）。"""
-    data = base_survey_dict()
-    data["design"]["rotation"] = "balanced"
-    report = validate_static(survey_from_dict(data))
-    assert report.ok
-    assert "W_ROTATION" in _codes(report.warnings)
+    data["questions"] = [q for q in data["questions"] if q["slot"] != 3]
+    with pytest.raises(SurveyDefinitionError, match="slot"):
+        survey_from_dict(data)
 
 
 def test_unused_named_system_prompt_warns():
@@ -105,14 +65,6 @@ def test_a_referenced_system_prompt_does_not_warn():
     for question in data["questions"]:
         question["system"] = "novelty"
     assert not validate_static(survey_from_dict(data)).warnings
-
-
-def test_balanced_rotation_with_memory_does_not_warn():
-    """記憶を持つ設問があれば順序効果が起きうるので、ラテン方格は意味を持つ。"""
-    data = with_remember(base_survey_dict(), "full_session")
-    data["design"]["rotation"] = "balanced"
-    report = validate_static(survey_from_dict(data))
-    assert not report.warnings
 
 
 # --------------------------------------------------------------------------- #
@@ -202,112 +154,57 @@ def test_top_box_out_of_range_is_rejected():
 
 
 def _screener(**overrides):
-    """方式に合った形のスクリーナー定義（§4.2）。
-
-    `ask` は選択肢を見せて答えさせるので `questions`、`assume` / `infer` は
-    選択肢を提示しないので自然言語の `conditions`。
-    """
-    mode = overrides.get("mode", "ask")
-    screener: dict = {"oversample_factor": 4}
-    if mode == "ask":
-        screener["questions"] = [
-            {
-                "id": "sc1",
-                "text": "飲用頻度は。",
-                "type": "single",
-                "options": ["週2回以上", "それ以下"],
-                "pass_if": [1],
-            }
-        ]
-    else:
-        screener["conditions"] = ["週2回以上飲む"]
+    """スクリーナー定義（§4.2）。対象者条件を自然言語で書く方式だけがある。"""
+    screener: dict = {"oversample_factor": 4, "conditions": ["週2回以上飲む"]}
     screener.update(overrides)
     return screener
 
 
-def test_ask_screener_passes():
+def test_screener_passes():
     data = base_survey_dict()
     data["screening"] = _screener()
     assert validate_static(survey_from_dict(data)).ok
 
 
-def test_pass_if_out_of_range_is_rejected():
+def test_conditions_are_required():
+    """条件の文言が無ければ、判定用 LLM に見せるものが無い。"""
     data = base_survey_dict()
-    data["screening"] = _screener()
-    data["screening"]["questions"][0]["pass_if"] = [1, 5]
-    report = validate_static(survey_from_dict(data))
-    assert any("pass_if" in issue.message for issue in report.errors)
-
-
-def test_open_screener_question_is_rejected():
-    """自由回答では通過を機械判定できない。"""
-    data = base_survey_dict()
-    data["screening"] = _screener()
-    data["screening"]["questions"][0]["type"] = "open"
-    report = validate_static(survey_from_dict(data))
-    assert any("single / multi" in issue.message for issue in report.errors)
-
-
-def test_empty_pass_if_is_rejected():
-    data = base_survey_dict()
-    data["screening"] = _screener()
-    data["screening"]["questions"][0]["pass_if"] = []
-    report = validate_static(survey_from_dict(data))
-    assert any("pass_if" in issue.message for issue in report.errors)
-
-
-def test_assume_requires_conditions():
-    """条件の文言が無ければ、何もペルソナに付与できない。"""
-    from persona_sim.errors import SurveyDefinitionError
-
-    data = base_survey_dict()
-    data["screening"] = _screener(mode="assume", conditions=[])
+    data["screening"] = _screener(conditions=[])
     with pytest.raises(SurveyDefinitionError) as excinfo:
         survey_from_dict(data)
     assert "screening.conditions" in str(excinfo.value)
 
 
-def test_assume_rejects_blank_conditions():
+def test_blank_conditions_are_rejected():
     data = base_survey_dict()
-    data["screening"] = _screener(mode="assume", conditions=["   "])
+    data["screening"] = _screener(conditions=["   "])
     report = validate_static(survey_from_dict(data))
     assert any("conditions[0]" in issue.message for issue in report.errors)
 
 
-def test_assume_with_conditions_passes():
+def test_oversample_factor_must_be_at_least_one():
     data = base_survey_dict()
-    data["screening"] = _screener(mode="assume")
-    del data["screening"]["oversample_factor"]
-    assert validate_static(survey_from_dict(data)).ok
-
-
-def test_assume_warns_about_unused_oversample_factor():
-    """効かない指定を黙って無視しない。"""
-    data = base_survey_dict()
-    data["screening"] = _screener(mode="assume")
+    data["screening"] = _screener(oversample_factor=0)
     report = validate_static(survey_from_dict(data))
-    assert report.ok
-    assert "W_SCREENER_OVERSAMPLE" in _codes(report.warnings)
+    assert any("oversample_factor" in issue.message for issue in report.errors)
 
 
-def test_estimate_shows_both_screening_methods():
-    """費用とのバーターで方式を選ぶので、選ばなかった側も見えている必要がある。"""
+def test_estimate_counts_the_judgement_calls():
+    """1バッチ＝1呼び出し。候補は size × oversample_factor 人。"""
     data = base_survey_dict()
-    data["screening"] = _screener(mode="assume")
+    data["screening"] = _screener(batch_size=2)
     estimate = validate_static(survey_from_dict(data)).estimate
+    assert estimate is not None
+    # パネル4人 × 4倍 = 16人 ÷ バッチ2 = 8回
+    assert estimate.screener_sessions == 8
+    assert any("スクリーニング" in line for line in estimate.lines())
 
+
+def test_estimate_has_no_screening_line_without_a_screener():
+    estimate = validate_static(survey_from_dict(base_survey_dict())).estimate
     assert estimate is not None
     assert estimate.screener_sessions == 0
-    assert estimate.screener_sessions_if_ask == 4 * 4 * 1  # size × factor × 条件数
-    assert any("ask なら" in line for line in estimate.lines())
-
-
-def test_estimate_counts_screener_sessions_for_ask():
-    data = base_survey_dict()
-    data["screening"] = _screener()
-    estimate = validate_static(survey_from_dict(data)).estimate
-    assert estimate is not None
-    assert estimate.screener_sessions == 16
+    assert not any("スクリーニング" in line for line in estimate.lines())
 
 
 # --------------------------------------------------------------------------- #
@@ -325,14 +222,13 @@ def test_estimate_for_same_multiplies_sessions_by_stimuli():
     assert estimate.effective_n_per_stimulus == 4
 
 
-def test_estimate_for_disjoint_divides_effective_n():
-    data = base_survey_dict(slots=1)
-    data["design"]["sample_overlap"] = "disjoint"
-    estimate = validate_static(survey_from_dict(data)).estimate
+def test_estimate_follows_the_concept_count():
+    """コンセプト1件ならセッションも1人1件。全員が全案を見るので有効nは全員分。"""
+    estimate = validate_static(survey_from_dict(base_survey_dict(slots=1))).estimate
     assert estimate is not None
     assert estimate.stimuli_per_persona == 1
     assert estimate.sessions == 4 * 1 * 2
-    assert estimate.effective_n_per_stimulus == 4 // 3
+    assert estimate.effective_n_per_stimulus == 4
 
 
 def test_answers_equal_sessions_without_memory():
@@ -382,7 +278,7 @@ def test_composite_segment_axis_is_accepted():
 
 def test_unknown_output_format_stops_validation():
     data = base_survey_dict()
-    data["output"]["formats"] = ["delta", "pdf"]
+    data["output"]["formats"] = ["csv", "pdf"]
     report = validate_static(survey_from_dict(data))
 
     assert not report.ok
@@ -393,7 +289,7 @@ def test_sample_survey_output_settings_pass():
     data = base_survey_dict()
     data["output"] = {
         "segments": ["total", "sex", "age_band_10", "sex_x_age_band_10", "cell_id"],
-        "formats": ["delta", "csv", "xlsx"],
+        "formats": ["csv", "xlsx"],
     }
     assert validate_static(survey_from_dict(data)).ok
 

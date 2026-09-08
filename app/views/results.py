@@ -23,7 +23,7 @@ from persona_sim.storage import warehouse
 from persona_sim.uiconfig import target_summary
 
 #: 属性別クロス集計の選択肢に出す表。コンセプト × 設問のものだけに絞る。
-#: コンセプト比較表とパネル構成表は選ばせない（`docs/issues/20260805002.md`）。
+#: 積んだ表とパネル構成表は選ばせない（`docs/issues/20260805002.md`）。
 CROSSTAB_PREFIX = "crosstab_"
 
 ui = context.ui_config()
@@ -189,6 +189,6 @@ st.download_button(
     file_name=f"{survey_id}_report.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
-st.caption("集計表とローデータを1つの Excel ファイル（シート2枚）にまとめています。")
+st.caption("概要・集計表・ローデータを1つの Excel ファイル（シート3枚）にまとめています。")
 
 footer()

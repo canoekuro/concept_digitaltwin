@@ -9,7 +9,7 @@
 
 ### 仕様書
 - `SPEC.md` — 親仕様（添付をそのまま配置）
-- `SPEC_PHASE1.md` — フェーズ1構築仕様。冒頭の親仕様参照のみ `SPEC.md` へのリンクに修正
+- `SPEC.md` — フェーズ1構築仕様。冒頭の親仕様参照のみ `SPEC.md` へのリンクに修正
 
 ### エージェント環境
 - `.agents/rules/` 7件 — 共通6件は `retrospective/agents-rules/` から複製（SSoT 一致を `diff` で確認）、
@@ -49,7 +49,7 @@ Out of Scope、データ・法務の順守事項を明記した。
 
 ## 3. 未対応事項
 
-- **実装は未着手。** `SPEC_PHASE1.md` §12 の M1（`personas_base` 構築）から開始する。
+- **実装は未着手。** `SPEC.md` §12 の M1（`personas_base` 構築）から開始する。
   `[project]` / `[build-system]` と実行時依存（`requirements.txt`）は M1 着手時に追加する。
 - **既定ブランチが未確定。** リモートにコミットが1つも無い状態から作業ブランチを push したため、
   `main` の扱い（作成・既定化）は利用者の判断が必要。

@@ -7,7 +7,7 @@
 
 | 資源 | 用途 |
 |---|---|
-| Unity Catalog のカタログ・スキーマ | `personas_base` / `panels` / `responses` / `runs` / `aggregates` |
+| Unity Catalog のカタログ・スキーマ | `personas_base` / `panels` / `responses` / `screener_responses` / `runs` |
 | Volume（例 `surveys`） | 調査定義 YAML の置き場所 |
 | SQL Warehouse | 結果閲覧ページの読み取り |
 | ジョブ | 調査の実行 |

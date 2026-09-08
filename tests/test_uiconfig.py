@@ -109,27 +109,19 @@ def test_unknown_key_is_rejected():
 
 
 @pytest.mark.parametrize(
-    ("moved", "destination"),
-    [
-        ("model", "survey_defaults.main_survey.model"),
-        ("prompt", "survey_defaults.main_survey.prompt"),
-        ("default_questions", "survey_defaults.questions"),
-        ("screener", "survey_defaults.screening"),
-        ("allocation", "ui.allocation_patterns"),
-        ("output", "survey_defaults.output"),
-        ("estimation_benchmarks", "ui.estimation_benchmarks"),
-    ],
+    "stray",
+    ["model", "prompt", "default_questions", "screener", "allocation", "estimation_benchmarks"],
 )
-def test_old_flat_keys_are_rejected_with_migration_hint(moved, destination):
-    """旧構造（最上位にべた並び）を黙って読まない（issue 202607301208 項目2）。
+def test_keys_outside_the_two_groups_are_rejected(stray):
+    """最上位に置けるのは survey_defaults と ui だけ（issue 202607301208 項目2）。
 
-    無視できてしまうと、設定を書いたのに既定で走ってしまう。
+    黙って無視できてしまうと、設定を書いたのに既定で走ってしまう。
     """
     data = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
-    data[moved] = {}
+    data[stray] = {}
     with pytest.raises(UIConfigError) as excinfo:
         ui_config_from_dict(data)
-    assert destination in str(excinfo.value)
+    assert stray in str(excinfo.value)
 
 
 def test_config_is_split_into_survey_defaults_and_ui():
@@ -170,20 +162,6 @@ def test_missing_pricing_is_rejected():
     del data["ui"]["estimation_benchmarks"]["pricing"]
     with pytest.raises(UIConfigError, match="input_usd_per_million"):
         ui_config_from_dict(data)
-
-
-def test_old_survey_session_key_is_rejected_with_unit_change():
-    """旧キーを黙って読まない。単位が1セッション→1回答に変わっている（下記参照）。
-
-    素通りさせると、桁は合っているのに記憶を持つ調査で過小に出る見積もりになる。
-    """
-    data = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
-    benchmarks = data["ui"]["estimation_benchmarks"]
-    benchmarks["survey_session"] = benchmarks.pop("survey_answer")
-    with pytest.raises(UIConfigError) as excinfo:
-        ui_config_from_dict(data)
-    assert "survey_answer" in str(excinfo.value)
-    assert "1回答あたり" in str(excinfo.value)
 
 
 def test_old_latency_key_is_rejected_with_migration_hint():
@@ -365,7 +343,6 @@ def test_condition_becomes_a_natural_language_screener(ui):
     screening = data["screening"]
     assert screening["conditions"] == ["週1回以上ビールまたは発泡酒を飲む人"]
     assert "questions" not in screening
-    assert screening["mode"] == "infer"
 
 
 def test_blank_condition_skips_screening(ui):
@@ -394,12 +371,9 @@ def test_survey_dict_rejects_no_sex_selected(ui):
 
 
 def test_design_is_always_counterfactual_monadic(ui):
+    """提示設計は設定で変えられないので、調査定義に design は書かない（§5）。"""
     data = build_survey_dict(ui, _form())
-    assert data["design"] == {
-        "sample_overlap": "same",
-        "presentation": "sequential",
-        "rotation": "none",
-    }
+    assert "design" not in data
     # 記憶は設問側。画面は案どうしを独立に評価させるので、どの設問にも書かない。
     assert all("remember" not in question for question in data["questions"])
 
@@ -593,35 +567,20 @@ def test_built_survey_omits_output_formats(ui):
     """ジョブ側でファイルを書き出さない（調査定義の既定 delta のみになる）。"""
     data = build_survey_dict(ui, _form())
     assert "formats" not in data["output"]
-    assert build_survey(ui, _form()).output.formats == ("delta",)
+    assert build_survey(ui, _form()).output.formats == ("csv", "xlsx")
 
 
-def test_non_infer_screening_omits_the_judge_settings(ui):
-    """`assume` では判定の LLM を呼ばないので、使われない設定を残さない。"""
-    from dataclasses import replace
-
-    assume_ui = replace(ui, screening=replace(ui.screening, mode="assume"))
-    screening = build_survey_dict(assume_ui, _form())["screening"]
-
-    assert screening["mode"] == "assume"
-    for unused in ("model", "prompt", "persona_card", "oversample_factor", "batch_size"):
-        assert unused not in screening
-
-
-def test_infer_screening_omits_logic(ui):
-    """`infer` では判定の指示が prompt.rule に一本化されており、logic は効かない。
-
-    書けば調査定義の読み込みで停止するので、UI 側でも書いてはいけない。
-    """
+def test_screening_carries_the_judge_settings(ui):
+    """判定用 LLM のモデル・プロンプト・カードを調査定義に載せる（§4.2）。"""
     screening = build_survey_dict(ui, _form())["screening"]
-    assert screening["mode"] == "infer"
+
+    assert screening["oversample_factor"] == ui.screening.oversample_factor
+    for key in ("model", "prompt", "persona_card"):
+        assert screening[key]
+
+
+def test_screening_does_not_carry_a_mode_or_logic(ui):
+    """方式は1つしか無いので書かない。条件の結合は prompt.rule の文面が決める。"""
+    screening = build_survey_dict(ui, _form())["screening"]
+    assert "mode" not in screening
     assert "logic" not in screening
-
-
-@pytest.mark.parametrize("mode", ["ask", "assume"])
-def test_logic_is_kept_for_other_modes(ui, mode):
-    """`ask` では通過判定の結合方法として今も効くので、そのまま渡す。"""
-    from dataclasses import replace
-
-    other_ui = replace(ui, screening=replace(ui.screening, mode=mode))
-    assert build_survey_dict(other_ui, _form())["screening"]["logic"] == ui.screening.logic

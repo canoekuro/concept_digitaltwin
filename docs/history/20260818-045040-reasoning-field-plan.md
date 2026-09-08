@@ -4,7 +4,7 @@
 - 対象: `persona_sim/panel/{schema,loader,validate}.py` /
   `persona_sim/run/{parsing,session,run}.py` / `persona_sim/llm/fake.py` /
   `persona_sim/storage/warehouse.py` / `persona_sim/metadata.py` /
-  `app/config/ui_config.yaml` / `SPEC_PHASE1.md` §2.3・§3・§6.3・§13 /
+  `app/config/ui_config.yaml` / `SPEC.md` §2.3・§3・§6.3・§13 /
   `docs/GUIDE_SURVEY_DEFINITION.md` / `tests/`
 - 起点: 「コンセプト調査で言語化させてから新規性を答えさせたい」という相談。
   記憶（`remember`）で言語化設問を挟む方式は既存機能で組めるが、1設問ぶん
@@ -16,7 +16,7 @@
 `model.max_tokens` = 8〜100、構造化出力は `{"answer": integer}`）。理由を書かせる手段は
 2つあるが、どちらも使えない。
 
-- **思考モード（thinking）** は `AGENTS.md`／`SPEC_PHASE1.md` §13 の不変条件で常に OFF。
+- **思考モード（thinking）** は `AGENTS.md`／`SPEC.md` §13 の不変条件で常に OFF。
   加えて `docs/issues/202607281100.md` のとおり、そもそもエンドポイントへ送られていない。
   仮に効かせられても**思考内容が記録に残らない**ので、§9.1 の再現性の考え方と噛み合わない。
 - **自由回答設問を前に置く**（`remember` で繋ぐ）方式は今日でも書けるが、設問が1つ増え、
@@ -83,7 +83,7 @@ JSON Schema に `maxLength` は入れない。strict スキーマでの対応が
 | `storage/warehouse.py` | `RAW_RESPONSE_COLUMNS` に `answer_reasoning` |
 | `metadata.py` | `max_tokens_reasoning` と reasoning 設問数を実行メタデータへ |
 | `app/config/ui_config.yaml` | `prompt.rules.reasoning` の文面と `model.max_tokens_reasoning`。設問側は `reasoning` を書かない |
-| `SPEC_PHASE1.md` | §2.3 列追加 / §3 フィールド / §6.3 パース規則 / §13 に「reasoning は思考モードとは別」の1項 |
+| `SPEC.md` | §2.3 列追加 / §3 フィールド / §6.3 パース規則 / §13 に「reasoning は思考モードとは別」の1項 |
 | `docs/GUIDE_SURVEY_DEFINITION.md` | 書き方・注意（費用・refusal・比較実験の勧め） |
 
 ### 既存テーブルへの影響

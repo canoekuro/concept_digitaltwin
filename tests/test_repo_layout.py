@@ -13,7 +13,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 REQUIRED_FILES = [
     "SPEC.md",
-    "SPEC_PHASE1.md",
     "AGENTS.md",
     "CLAUDE.md",
     "GEMINI.md",
@@ -82,7 +81,7 @@ def test_version_has_exactly_one_source():
 
     リテラルで二重に持っていたときに 0.1.0 と 0.3.0 で食い違い、
     `run_metadata.json` の `persona_sim_version` と `--version` が実装を指していなかった。
-    版がずれると「どの版のコードで走ったのか」を後から判別できない（`SPEC_PHASE1.md` §9.1）。
+    版がずれると「どの版のコードで走ったのか」を後から判別できない（`SPEC.md` §9.1）。
 
     **`pyproject.toml` 側を SSoT にはしない。** `importlib.metadata` から引くと、
     リポジトリを未インストールで使う経路（CI の `pythonpath`、ノートブックの sys.path 追加）で
